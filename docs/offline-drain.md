@@ -67,3 +67,17 @@ Headless, against the real build:
 ## Escape hatch
 
 Closed: the hub now offers `[N] NEW RUN — abandon this bunker and start over`, shown only when a saved run exists. It confirms with `ABANDON THIS RUN? [Y/N]` before clearing the save and cold-starting, so days of survival cannot be thrown away by a stray keypress.
+
+## Reaching it (IDLE_DOOR_WIRED_V1)
+
+The bunker survival layer already existed and now persists — but it sat behind the hub's `[6] BUNKER CONTROLS`, while the one door advertising it (IDLE, "keep the life support lit") printed a "this mode is being wired up" notice. The feature existed; the door that promised it did not open it.
+
+The IDLE door now routes into it. `window.saEnterBunkerLayer()` calls `reEnterTerminal("bunker")`, which closes the doors, brings the terminal up, prints `ROUTING TO LOCAL SYSTEMS — NODE 7`, and lands on LOCAL SYSTEMS.
+
+The AZTEC gate is preserved rather than bypassed — it is a designed puzzle, not an obstacle to route around. Re-entry reprints the key when the bunker is still locked, so it is always obtainable:
+
+- locked out after failed attempts → refused, back to hub
+- already unlocked this run → straight in
+- otherwise → `BUNKER PASSWORD >`, with the key reprinted above it
+
+Verified end to end on the build: door → terminal → key → `BUNKER [D / F / B]` → `F` → fuse panel, with the run persisting from that point. No page errors.
