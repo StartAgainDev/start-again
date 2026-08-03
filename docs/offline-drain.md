@@ -142,3 +142,17 @@ Four sites on the mesh. Two answer.
 - **COMMS** shows live fuse count and points at the fuse panel, where channels are actually aimed.
 
 This makes the shape of the network visible from the first minute, so when HOME comes online it is a site answering that never answered before — not a new menu item appearing.
+
+## The AZTEC gate no longer dead-ends a run (KEY_RECALL_V1)
+
+Reported from play: the key flashed past once in the boot log and was gone. Two wrong attempts then sealed BUNKER CONTROLS **for the whole run** — locking the player out of the survival layer, which is the core loop, with no way back.
+
+Three changes:
+
+- **The key is reprinted at the prompt.** Any time local systems ask for the password and the bunker is not already unlocked, `KEY ON FILE .... AZTEC-XXXX` prints directly above the input.
+- **`[K]` recalls it** without counting as an attempt. The prompt advertises this: `BUNKER PASSWORD ([K] = recall key) >`.
+- **The run-long lockout is gone.** Wrong answers reprint the key and re-ask, forever.
+
+The gate itself stays — you still have to enter the key, and it still rotates every run. What is removed is the dead end. A gate whose only failure mode is "you did not write down a four-character string thirty seconds ago" was costing players the whole game for a memory lapse, not a decision.
+
+Verified: three consecutive wrong answers all recover with the key reshown and no lockout text; `[K]` recalls without penalty; the correct key still works afterwards; the hub never shows `BUNKER CONTROLS — LOCKED`.
