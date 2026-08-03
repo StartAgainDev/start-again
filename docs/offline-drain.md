@@ -64,6 +64,6 @@ Headless, against the real build:
 - Consecutive absences compound rather than resetting (162,720s → 155,155s across a second 6-hour gap — exact to the second).
 - Save cleared on death. No page errors in any case.
 
-## Known gap
+## Escape hatch
 
-There is no way to abandon a run and start fresh short of dying. If a player wants a clean slate mid-run, they currently cannot get one. A "NEW RUN" option on the hub or death screen would close this.
+Closed: the hub now offers `[N] NEW RUN — abandon this bunker and start over`, shown only when a saved run exists. It confirms with `ABANDON THIS RUN? [Y/N]` before clearing the save and cold-starting, so days of survival cannot be thrown away by a stray keypress.
