@@ -122,3 +122,23 @@ Fuse losses across a range of absences match `baseline(1 per 24h) + sabotage(per
 | DEF 2/4, away 8h | 0 | 0 | 0 |
 
 A fully defended bunker (DEFENSE 4/4) takes **zero** sabotage across three days away. A night away never triggers a blow at any tier.
+
+## The IDLE door opens onto the network (v2)
+
+The door no longer drops the player into a single node. It scans the local mesh and presents all four sites from the settled network design:
+
+```
+// BUNKER NETWORK · LOCAL MESH //
+Four sites on the mesh. Two answer.
+  [1] LOCAL .... NODE 7 · ONLINE · life support grid
+  [2] HOME ..... NO CARRIER · sleep + medical
+  [3] DEPOT .... NO CARRIER · workers + security
+  [4] COMMS .... 4/4 · outside link · sensor layer
+  [B] BACK
+```
+
+- **LOCAL** routes through the AZTEC gate into the fuse panel, as before.
+- **HOME** and **DEPOT** are unbuilt. Selecting them dials, fails, and reports `NO CARRIER — the site has never answered`, then returns to the mesh. They are presented the way the machine would present them, not as a "coming soon" notice: the player is looking at a dead mesh, not an unfinished menu.
+- **COMMS** shows live fuse count and points at the fuse panel, where channels are actually aimed.
+
+This makes the shape of the network visible from the first minute, so when HOME comes online it is a site answering that never answered before — not a new menu item appearing.
