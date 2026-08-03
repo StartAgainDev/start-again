@@ -257,7 +257,7 @@
     <div class="gp mapcard">
       <div class="maphead">
         <span class="gtitle">United States · Theatre Map</span>
-        <span class="exec">DAY 1 · DISTRICTS <b id="hudDistricts">0 / 4 LIT</b> · MEGA <b id="hudCap">0%</b> · RING SPEED <b>×1.0</b> (Europe)</span>
+        <span class="exec">DAY <b id="hudDay">1</b> · DISTRICTS <b id="hudDistricts">0 / 4 LIT</b> · MEGA <b id="hudCap">0%</b> · RING SPEED <b>×1.0</b> (Europe)</span>
       </div>
       <div class="mapstage">
         
@@ -385,6 +385,17 @@
 
   // ===== RING -> PANEL: the top Global Biome Meter is the SAME survival clock as the ring =====
   var lastBio=null;
+  // HUD_CLOCK_V1: shared world-turn counter, mirrored from the ring's own day count.
+  var curDay=1;
+  function paintDay(){
+    var d=document.getElementById('hudDay');
+    if(d) d.textContent=curDay;
+    var rowState=document.getElementById('rowState');
+    if(rowState){
+      var cap=onlineCount();
+      rowState.textContent='Turn '+curDay+(cap===4 ? ' \u00b7 HONEYMOON' : ' \u00b7 LIBERATION');
+    }
+  }
   function paintBiomeBar(snap){
     if(!snap) return;
     var pct=Math.max(0,Math.min(100,Math.round(snap.biome)));
@@ -405,6 +416,9 @@
     if(pct<=0){ word='EXTINCT'; arrow='\u2620'; }
     else if(cls==='crit'){ word='CRITICAL'; }
     recEl.textContent=word+' '+arrow; recEl.className='rec '+cls;
+    // HUD_CLOCK_V1: the ring is the single source of truth for world time - mirror its day count
+    // into the theatre HUD every time the meter repaints (i.e. after every resolved battle).
+    if(snap.day!=null){ curDay=snap.day; paintDay(); }
     if(labEl){ labEl.textContent='Shared survival clock \u00b7 ring live \u00b7 ceiling '+ceil+'%'+(snap.power!=null?' \u00b7 POWER \u00d7'+snap.power.toFixed(1):'')+(snap.over?' \u00b7 GAME OVER':''); }
     lastBio=pct;
   }
@@ -484,8 +498,11 @@
       else if(cap<4){ st.textContent='◐ STATUS: CONTESTED'; st.className='status warn'; }
       else { st.textContent='◉ STATUS: STABLE'; st.className='status ok'; }
     }
+    // HUD_CLOCK_V1: the theatre HUD used to read a hardcoded "DAY 1 / Turn 1" forever, so the
+    // player saw a frozen clock while the ring advanced and the biome drained underneath them.
+    // Both readouts now track curDay, which paintBiomeBar refreshes from live ring state.
     var rowState=el('rowState');
-    if(rowState) rowState.textContent = cap===4 ? 'Turn 1 · HONEYMOON' : 'Turn 1 · LIBERATION';
+    if(rowState) rowState.textContent = 'Turn '+curDay+(cap===4 ? ' \u00b7 HONEYMOON' : ' \u00b7 LIBERATION');
   }
 
   function selectDistrict(id){
