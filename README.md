@@ -28,7 +28,12 @@ required; just open `index.html` in a browser to play).
 - **Phase I → Phase II ("conquest")** — endgame with Victory Track.
 - **Bank system** — Phase-2 shares, land, loans, VP pressure.
 - **Superweapons** — Nuke, Satellite, VP Miner.
-- **Council & Diplomacy**, **Bunker / APEX ECHO** survival layer.
+- **Council & Diplomacy**.
+- **Bunker / APEX ECHO survival layer** — the Idle door at Site AZTEC. Pure survival:
+  its only loss condition is death by life-support failure, which severs terminal
+  access. It has no win condition of its own. Conquest and overthrow are resolved at
+  the district and World Ring tiers, never here — see
+  [`docs/bunker-loss-condition.md`](docs/bunker-loss-condition.md).
 - **Milestones**, **Remnant March**, **State of the World (SOTW)** deck.
 - **Science Hand**, **Occupying Forces**, **Zone of Control**.
 
