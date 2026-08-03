@@ -8,14 +8,26 @@ The bunker was session-only. `saveVaults()` was an explicit no-op, the only loca
 
 An idle game that doesn't idle. It also meant no fuse number could be validated, because the clock stopped whenever you looked away.
 
-## The rate
+## Three kinds of time (v2)
 
-Settled from the existing design (reduced decay during rest, soft cap, then full speed, long absences still risky):
+**v1 got this wrong and had to be corrected.** It slowed *everything* while you were away, sabotage included — which handed the player free protection from intruders just for closing the tab. That is precisely the job the **Home (sleep) bunker** is meant to do, so node 2 of the four-node network would have been pointless before it was built. It is the same dominance bug the council flagged, arriving from the opposite direction.
 
-| Time away | Rate | Effect |
+The three clocks are now billed separately:
+
+| Clock | Rate while away | Why |
 |---|---|---|
-| First 12 hours | **0.35×** | a night's sleep or a work day is survivable |
-| Beyond 12 hours | **1.00×** | a long absence is genuinely dangerous |
+| **Life support** (air / water / thermal) | reduced (see below) | the concession to players with jobs and beds |
+| **Obligation** (baseline decay, 1 fuse / 24h) | **full** | obligations accrue; the bunker goes dark on its own schedule |
+| **Hostile** (DEFENSE sabotage) | **full** | intruders do not care that you had dinner |
+
+Freezing the hostile clock is reserved for the Home bunker. **Leaving DEFENSE at 4/4 is what makes an absence safe from intruders — not the act of leaving.**
+
+### Life-support rate
+
+| Time away | Rate |
+|---|---|
+| First 12 hours | **0.35×** |
+| Beyond 12 hours | **1.00×** |
 
 There is **no total cap**. You can die while offline — that is the intended stake. Gaps under 20 seconds are ignored so reloads and tab switches cost nothing.
 
@@ -81,3 +93,32 @@ The AZTEC gate is preserved rather than bypassed — it is a designed puzzle, no
 - otherwise → `BUNKER PASSWORD >`, with the key reprinted above it
 
 Verified end to end on the build: door → terminal → key → `BUNKER [D / F / B]` → `F` → fuse panel, with the run persisting from that point. No page errors.
+
+## Relationship to the Home (sleep) bunker
+
+This system covers the **undeclared** absence — you closed the tab. It is not a substitute for the **declared** one.
+
+The four-node bunker network is: Local (starter, locked), **Home / sleep (health repair, needs work)**, Worker/Depot (needs work), Comms (locked, 1 fuse). The settled rest rules for Home are: resting freezes **hostile timers only**, obligations like depot upkeep still accrue, entry is gated so the player cannot flee mid-crisis, and early return carries a cost. Still undefined: the cost curve, sleep-duration options, and escrow amounts.
+
+So the division of labour is:
+
+- **Close the tab:** everything runs. Life support gets a modest concession, sabotage and decay do not.
+- **Sleep at Home (not yet built):** hostile timers freeze. That is the thing worth travelling for.
+
+Naming follows from this. The hub's save-wipe option is `[N] NEW GAME — wipe this run and start over`, deliberately **not** "abandon this bunker": leaving one bunker for another is a real mechanic in the network, so a meta save-wipe must not borrow its language.
+
+## Verified (v2)
+
+Fuse losses across a range of absences match `baseline(1 per 24h) + sabotage(per DEFENSE tier)` exactly:
+
+| Case | Fuses lost | Expected | of which sabotage |
+|---|---|---|---|
+| DEF 4/4, away 72h | 3 | 3 | 0 |
+| DEF 3/4, away 40h | 1 | 1 | 0 |
+| DEF 3/4, away 50h | 3 | 3 | 1 |
+| DEF 3/4, away 100h | 6 | 6 | 2 |
+| DEF 2/4, away 20h | 0 | 0 | 0 |
+| DEF 2/4, away 30h | 2 | 2 | 1 |
+| DEF 2/4, away 8h | 0 | 0 | 0 |
+
+A fully defended bunker (DEFENSE 4/4) takes **zero** sabotage across three days away. A night away never triggers a blow at any tier.
