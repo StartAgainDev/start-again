@@ -152,3 +152,18 @@ Three changes:
 The gate itself stays — you still have to enter the key, and it still rotates every run. What is removed is the dead end. A gate whose only failure mode is "you did not write down a four-character string thirty seconds ago" was costing players the whole game for a memory lapse, not a decision.
 
 Verified: three consecutive wrong answers all recover with the key reshown and no lockout text; `[K]` recalls without penalty; the correct key still works afterwards; the hub never shows `BUNKER CONTROLS — LOCKED`.
+
+## Mesh exits (MESH_EXITS_V1)
+
+Reported from play: entering the idle game through the IDLE door felt like a one-way trip. `[B] BACK` on the mesh dropped into the profile hub — a screen the player passed through long *before* the doors — and the only route back to the doors was the corner DISCONNECT button, which reads as "quit the game", not "go back".
+
+The mesh is the idle game's home screen, so its exits now say what they do:
+
+```
+  [H] HUB ...... command menu · mail, bank, departments
+  [B] BACK ..... leave the terminal · return to the doors
+```
+
+`[B]` goes out to the doors (the bunker keeps running); `[H]` goes to the hub. And `BUNKER CONTROLS`' own `[B]` now returns to **wherever the player entered from** — the mesh if they came through the IDLE door, the hub if they came through `[6]` — rather than always jumping to the hub.
+
+Verified: mesh lists both exits, `[H]` reaches the hub, `[1] → key → [B]` returns to the mesh, `[B]` from the mesh reaches the doors, and the IDLE door still works on re-entry.
