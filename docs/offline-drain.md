@@ -76,10 +76,6 @@ Headless, against the real build:
 - Consecutive absences compound rather than resetting (162,720s → 155,155s across a second 6-hour gap — exact to the second).
 - Save cleared on death. No page errors in any case.
 
-## Escape hatch
-
-Closed: the hub now offers `[N] NEW RUN — abandon this bunker and start over`, shown only when a saved run exists. It confirms with `ABANDON THIS RUN? [Y/N]` before clearing the save and cold-starting, so days of survival cannot be thrown away by a stray keypress.
-
 ## Reaching it (IDLE_DOOR_WIRED_V1)
 
 The bunker survival layer already existed and now persists — but it sat behind the hub's `[6] BUNKER CONTROLS`, while the one door advertising it (IDLE, "keep the life support lit") printed a "this mode is being wired up" notice. The feature existed; the door that promised it did not open it.
@@ -105,7 +101,7 @@ So the division of labour is:
 - **Close the tab:** everything runs. Life support gets a modest concession, sabotage and decay do not.
 - **Sleep at Home (not yet built):** hostile timers freeze. That is the thing worth travelling for.
 
-Naming follows from this. The hub's save-wipe option is `[N] NEW GAME — wipe this run and start over`, deliberately **not** "abandon this bunker": leaving one bunker for another is a real mechanic in the network, so a meta save-wipe must not borrow its language.
+A "wipe this run" option briefly lived on the hub and was removed: an out-of-world save-management command reads wrong on an in-fiction terminal. A persisted run ends the way the bunker ends it — you die, and death clears the save.
 
 ## Verified (v2)
 
