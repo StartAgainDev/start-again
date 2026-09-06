@@ -211,6 +211,32 @@ test('death never recreates a persisted save', () => {
 
 // ---------- 3. Reversible fuse move must not fabricate survival time ----
 
+test('adding a fuse preserves the FRACTION of remaining budget (proportional rule)', () => {
+  // AIR 3/4 with 50% of the 2-day budget remaining. Move a fuse away (AIR 2/4) then
+  // back (AIR 3/4). Round-trip must return to the SAME 50% share, and the intermediate
+  // 2/4 state must be at 50% of the new (smaller) tier ceiling.
+  const h = makeHarness();
+  h.ev(`
+    openingApplied = true;
+    FUSE.air.lit   = 3;
+    FUSE.water.lit = 3;
+    FUSE.comms.lit = 1;
+    reconcileAll();
+    rem.air = 86400;              // exactly 50% of the 2-day (172800s) tier
+    moveFrom = 2; onFuseTo("4");  // AIR 3/4 -> 2/4
+  `);
+  const midAir = h.ev('rem.air');
+  const midBudget = h.ev('CLOCK_MIN.air[FUSE.air.lit]');
+  const midFrac = midAir / midBudget;
+  assert(Math.abs(midFrac - 0.5) < 0.01,
+    `AIR fraction must be preserved (~0.5), got ${midFrac.toFixed(3)} (${midAir}/${midBudget})`);
+
+  h.ev('moveFrom = 4; onFuseTo("2");'); // AIR 2/4 -> 3/4
+  const backAir = h.ev('rem.air');
+  assert(Math.abs(backAir - 86400) < 1,
+    `AIR must return to the original 86400s after A\u2192B\u2192A, got ${backAir}`);
+});
+
 test('reversible AIR->WATER->AIR move does not manufacture AIR time', () => {
   const h = makeHarness();
   h.ev(`

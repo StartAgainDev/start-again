@@ -30798,16 +30798,22 @@ var SA_TUT_AVATARS = {
     lastLit[key]=nowLit;
     if(b===null){ rem[key]=null; return; }   // back to 4/4 -> system safe, clock cleared
     if(rem[key]===null){ rem[key]=b; return; }   // clock just born -> full tier budget
-    if(nowLit>was){
-      // FUSE_MOVE_NO_FREE_TIME_V1 (2026-09-07): a fuse added to a system lifts the tier
-      // ceiling but must NOT credit backdated survival time. Prior behaviour added the
-      // difference between the old and new tier budgets, so moving a fuse away and back
-      // could inflate AIR from 100s to 86500s in two clicks. New rule: keep the seconds
-      // you had (capped at the new, larger budget). You gain headroom, not free time.
-      rem[key]=Math.min(b, rem[key]);
-    } else if(nowLit<was){
-      // A FUSE WAS LOST: cap remaining down to the new (smaller) budget so the loss bites now.
-      rem[key]=Math.min(rem[key], b);
+    // FUSE_MOVE_NO_FREE_TIME_V1 (2026-09-07): a fuse change preserves the same FRACTION of
+    // the tier's budget. Prior behaviour credited backdated survival time on additions,
+    // so moving a fuse away and back inflated AIR from 100s to 86500s in two clicks. The
+    // proportional rule is exactly reversible (A\u2192B\u2192A is a no-op) and still lets a real
+    // fuse addition feel meaningful: 50% of the old tier becomes 50% of the new one, so
+    // absolute headroom grows without any second being backdated.
+    var oldB = CLOCK_MIN[key][was];
+    if(oldB && oldB > 0){
+      rem[key] = Math.min(b, rem[key] * (b / oldB));
+    } else {
+      // Coming from 4/4 (oldB null) or a bad state: seed at the new tier's full budget.
+      rem[key] = b;
+    }
+    if(nowLit<was){
+      // Extra safety: on a fuse LOSS the remaining must never exceed the new budget.
+      rem[key] = Math.min(rem[key], b);
     }
     if(rem[key] > b) rem[key]=b;
     if(rem[key] < 0) rem[key]=0;
@@ -32954,9 +32960,13 @@ var SA_TUT_AVATARS = {
     }
     if(critical){
       emergencyRender = true;
+      // Safety: if the promise below never resolves for any reason, don't strand every
+      // future narrative screen in instant-render mode. 5s is well past any real render.
+      var _emergencyTimeout = setTimeout(function(){ emergencyRender = false; }, 5000);
       typeLine("// EMERGENCY \u2014 SYSTEMS CRITICAL // Away "+fmtAway(res.away)+". Rescue now.",
         {cls:"saTerm-red", speed:0});
       fusePanel().then(function(){
+        clearTimeout(_emergencyTimeout);
         emergencyRender = false;
         // Only NOW arm the live clocks. The player has the input open with their full
         // pre-resume budget intact and can immediately press M to move a fuse.
