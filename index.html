@@ -30728,9 +30728,9 @@ var SA_TUT_AVATARS = {
     var v=(val||"").trim().toUpperCase();
     hideInput(); busy=true;
     if(v==="B"){ fusePanelOpen=false; typeLine("> BACK", {cls:"saTerm-dim", instant:true}).then(function(){ return wait(120); }).then(bunkerControls); return; }
-    if(v==="C"){ actionPause=true; commsAssign(); return; }
+    if(v==="C"){ actionPause=true; actionPauseStart=Date.now(); commsAssign(); return; }
     if(v==="M"){
-      actionPause=true;   // freeze the clocks while the player sets up the move (rescue must be possible)
+      actionPause=true; actionPauseStart=Date.now();   // freeze clocks briefly (see ACTION_PAUSE_CAP_V1)
       moveFrom=-1;
       typeLine("MOVE A FUSE \u2014 take from a system that can spare one.", {cls:"saTerm-dim", speed:5})
         .then(function(){ busy=false; askInput("MOVE FROM [1-6] (X=cancel) >", {mode:"fuseFrom", maxlength:2}); });
@@ -30798,15 +30798,22 @@ var SA_TUT_AVATARS = {
     lastLit[key]=nowLit;
     if(b===null){ rem[key]=null; return; }   // back to 4/4 -> system safe, clock cleared
     if(rem[key]===null){ rem[key]=b; return; }   // clock just born -> full tier budget
-    if(nowLit>was){
-      // A FUSE WAS ADDED: you restored capacity, so you GAIN time. Add the difference between
-      // the old tier's budget and the new (bigger) one, and never end up below the old remaining.
-      var oldB=CLOCK_MIN[key][was];            // previous (smaller) tier budget
-      var gain = b - (oldB===null?0:oldB);     // extra headroom the new fuse buys
-      rem[key]=Math.min(b, rem[key] + Math.max(0, gain));
-    } else if(nowLit<was){
-      // A FUSE WAS LOST: cap remaining down to the new (smaller) budget so the loss bites now.
-      rem[key]=Math.min(rem[key], b);
+    // FUSE_MOVE_NO_FREE_TIME_V1 (2026-09-07): a fuse change preserves the same FRACTION of
+    // the tier's budget. Prior behaviour credited backdated survival time on additions,
+    // so moving a fuse away and back inflated AIR from 100s to 86500s in two clicks. The
+    // proportional rule is exactly reversible (A\u2192B\u2192A is a no-op) and still lets a real
+    // fuse addition feel meaningful: 50% of the old tier becomes 50% of the new one, so
+    // absolute headroom grows without any second being backdated.
+    var oldB = CLOCK_MIN[key][was];
+    if(oldB && oldB > 0){
+      rem[key] = Math.min(b, rem[key] * (b / oldB));
+    } else {
+      // Coming from 4/4 (oldB null) or a bad state: seed at the new tier's full budget.
+      rem[key] = b;
+    }
+    if(nowLit<was){
+      // Extra safety: on a fuse LOSS the remaining must never exceed the new budget.
+      rem[key] = Math.min(rem[key], b);
     }
     if(rem[key] > b) rem[key]=b;
     if(rem[key] < 0) rem[key]=0;
@@ -30998,8 +31005,21 @@ var SA_TUT_AVATARS = {
   var panelRendering=false;    // true while fusePanel() is printing (blocks tick-driven re-entry)
   var panelLineEls=[];         // captured <div>s for the 6 system rows, updated in place by the tick
   var actionPause=false;       // true while the player is mid-MOVE or mid-AIM dialog \u2014 clocks freeze so a rescue is always possible and in-progress state can't be clobbered
+  /* ACTION_PAUSE_CAP_V1 (2026-09-07): the previous implementation froze every clock for
+     as long as the player sat at the MOVE or AIM prompt, indefinitely. A player could open
+     MOVE and walk away for hours with no drain. Cap the reprieve at 30 REAL seconds. After
+     that, the tick advances normally (using the capped delta) even if the dialog is still
+     open. Thirty seconds is enough time to make a rescue choice, not enough to break the
+     survival stakes. */
+  var ACTION_PAUSE_MAX_S = 30;
+  var actionPauseStart = 0;
   function clockStep(){
-    if(actionPause){ lastTickTs=Date.now(); return; } // frozen during a move/aim; don't drain or redraw
+    if(actionPause){
+      var pausedFor = (Date.now() - actionPauseStart) / 1000;
+      if(pausedFor < ACTION_PAUSE_MAX_S){ lastTickTs=Date.now(); return; }
+      // Reprieve expired: fall through to a normal tick using the capped delta.
+      lastTickTs = Date.now() - (pausedFor - ACTION_PAUSE_MAX_S) * 1000;
+    }
     // The bunker stays alive across the terminal AND the game-doors screen. Only a full
     // exit (DISCONNECT / death / new game) stops it.
     if(!termActive && !bunkerLive){ disarmClocks(); return; }
@@ -31034,8 +31054,27 @@ var SA_TUT_AVATARS = {
                                           you had dinner. Freezing this is the
                                           Home bunker's reason to exist.
      fullDt defaults to dtReal, so the live tick is unchanged. */
+  /* OFFLINE_CHRONOLOGY_V1 (2026-09-07): a bulk advanceBy() call for a long offline gap
+     used to process life-support drain, sabotage blows, and baseline blows in one pass over
+     the whole elapsed time. The tier changes that fuses blowing would cause never fed back
+     into subsequent drain calculations, so a 72h bulk catch-up could survive an absence that
+     kills the player hour-by-hour. Partition any long call into 1-hour steps so tier changes
+     register in real order. The single-hour slice is still one function call, so the fast path
+     for the live half-second tick is unchanged. */
+  var ADVANCE_SLICE_S = 60;  // one minute; fine-grained enough that tier changes register nearly-continuously
   function advanceBy(dtReal, live, fullDt){
     if(fullDt==null) fullDt=dtReal;
+    if(dtReal > ADVANCE_SLICE_S || fullDt > ADVANCE_SLICE_S){
+      var slices = Math.ceil(Math.max(dtReal, fullDt) / ADVANCE_SLICE_S);
+      var dReal = dtReal / slices, dFull = fullDt / slices, died = null;
+      for(var s=0; s<slices && !died; s++){
+        died = _advanceOne(dReal, live, dFull);
+      }
+      return died;
+    }
+    return _advanceOne(dtReal, live, fullDt);
+  }
+  function _advanceOne(dtReal, live, fullDt){
     var mult=powerMult();
     // Convert elapsed REAL seconds -> spec-minutes drained, scaled by POWER (weak power drains faster).
     var drainedMin = (dtReal / TIME_SCALE) * mult;
@@ -31139,7 +31178,12 @@ var SA_TUT_AVATARS = {
     return m+"m";
   }
   // A run is worth saving only once it has actually started (past the opening kick).
-  function runIsPersistable(){ return !!(openingApplied || clocksArmed); }
+  // DEAD_RUN_LATCH_V1 (2026-09-07): once the run dies, no lifecycle handler may resurrect
+  // it. `deadRun` is set true by systemFailure() and clearBunkerSave(), and reset only when
+  // a genuinely new run is opened (open() / resumeRun() clear it). Every save path must
+  // consult runIsPersistable(), so gating it here covers all of them.
+  var deadRun = false;
+  function runIsPersistable(){ return !deadRun && !!(openingApplied || clocksArmed); }
   function saveBunkerState(){
     if(!runIsPersistable()) return;
     try{
@@ -31163,7 +31207,12 @@ var SA_TUT_AVATARS = {
       return s;
     }catch(e){ return null; }
   }
-  function clearBunkerSave(){ try{ localStorage.removeItem(SAVE_KEY); }catch(e){} }
+  function clearBunkerSave(){
+    // DEAD_RUN_LATCH_V1: any explicit clear (death, fresh run) latches deadRun so that a
+    // subsequent pagehide/beforeunload/visibilitychange cannot re-persist the corpse.
+    try{ localStorage.removeItem(SAVE_KEY); }catch(e){}
+    deadRun = true;
+  }
   // Periodic write while the clocks run, so a crash or hard close loses seconds, not the run.
   function saveHeartbeat(){
     if(Date.now()-lastSaveTs < 15000) return;
@@ -31345,11 +31394,18 @@ var SA_TUT_AVATARS = {
      anyone could finish reading them. TYPE_FLOOR stops any line typing faster than
      a readable baseline. Anything that clears afterwards must use hold(). */
   var TYPE_FLOOR = 16;
+  var emergencyRender = false; // when true, every typeLine renders instantly (see URGENT_SCREEN_INSTANT_V1)
+  /* URGENT_SCREEN_INSTANT_V1 (2026-09-07): the global 16ms/char floor applied to EVERY line
+     was slowing timed decisions (Bunker Defense) and the emergency-resume fuse panel enough
+     that the player could die on the animation. Callers can now pass `speed:0` (or the
+     existing `instant:true`) to bypass the floor for urgent screens. Narrative transitions
+     continue to use the floor by simply omitting speed or passing a positive value. */
   function typeLine(text, opts){
-    opts=opts||{}; var cls=opts.cls||"", speed=Math.max(opts.speed||16, TYPE_FLOOR), allowFmt=opts.fmt;
+    opts=opts||{}; var cls=opts.cls||"", allowFmt=opts.fmt;
+    var speed = (emergencyRender || opts.speed === 0) ? 0 : Math.max(opts.speed||16, TYPE_FLOOR);
     return new Promise(function(res){
       var p=addLine(cls); var i=0; var raw=String(text);
-      if(opts.instant){ p.innerHTML = allowFmt?fmt(raw):esc(raw); scrollEnd(); return res(); }
+      if(opts.instant || speed===0){ p.innerHTML = allowFmt?fmt(raw):esc(raw); scrollEnd(); return res(); }
       (function tick(){
         i++;
         var chunk=raw.slice(0,i);
@@ -32422,19 +32478,24 @@ var SA_TUT_AVATARS = {
   // payoff about not blindly activating everything.)
   function bunkerDefense(){
     clearScreen(); // fresh screen for the intruder-alert view
+    /* URGENT_SCREEN_INSTANT_V1 (2026-09-07): Bunker Defense sits under the 60-second
+       assassination clock. Every character rendered on this screen is a character the
+       hidden clock eats before the player can even see the options, and the READABILITY_V1
+       floor made this worse. Render this whole menu with speed:0 so the input opens the
+       instant it lands. The narrative is short and this is a timed decision, not a beat. */
     var seq=[
       {t:"", instant:true},
-      {t:"\u26a0\u26a0\u26a0  INTRUDER ALERT  \u26a0\u26a0\u26a0", cls:"saTerm-flash", speed:10},
-      {t:"PERIMETER BREACHED \u2014 HOSTILES INSIDE THE BUNKER", cls:"saTerm-red", speed:8},
-      {t:"MULTIPLE SIGNATURES CLOSING ON THIS ROOM.", cls:"saTerm-red", speed:6},
-      {t:"THEY ARE HERE FOR YOU.", cls:"saTerm-red", speed:12},
+      {t:"\u26a0\u26a0\u26a0  INTRUDER ALERT  \u26a0\u26a0\u26a0", cls:"saTerm-flash", speed:0},
+      {t:"PERIMETER BREACHED \u2014 HOSTILES INSIDE THE BUNKER", cls:"saTerm-red", speed:0},
+      {t:"MULTIPLE SIGNATURES CLOSING ON THIS ROOM.", cls:"saTerm-red", speed:0},
+      {t:"THEY ARE HERE FOR YOU.", cls:"saTerm-red", speed:0},
       {t:"", instant:true},
-      {t:"RECOMMENDED ACTION: ACTIVATE ALL LAYERS OF DEFENSE.  [Y/N]", cls:"saTerm-warn", speed:8},
+      {t:"RECOMMENDED ACTION: ACTIVATE ALL LAYERS OF DEFENSE.  [Y/N]", cls:"saTerm-warn", speed:0},
       {t:"-------------------------------------------------", cls:"saTerm-dim", instant:true},
-      {t:"  ...or select a single layer:", cls:"saTerm-dim", speed:4},
-      {t:"  [1] DEPLOY GUARDS \u2014 armed response team", cls:"saTerm-menukey", speed:3},
-      {t:"  [2] AUTO-DEFENSES \u2014 automated turrets", cls:"saTerm-menukey", speed:3},
-      {t:"  [3] ARM THE DOORS \u2014 seal the bulkheads", cls:"saTerm-menukey", speed:3}
+      {t:"  ...or select a single layer:", cls:"saTerm-dim", speed:0},
+      {t:"  [1] DEPLOY GUARDS \u2014 armed response team", cls:"saTerm-menukey", speed:0},
+      {t:"  [2] AUTO-DEFENSES \u2014 automated turrets", cls:"saTerm-menukey", speed:0},
+      {t:"  [3] ARM THE DOORS \u2014 seal the bulkheads", cls:"saTerm-menukey", speed:0}
     ];
     return runSeq(seq).then(function(){
       // Prompt defaults to the recommendation (Y/N); 1-3 also accepted here to pick a layer directly.
@@ -32862,6 +32923,7 @@ var SA_TUT_AVATARS = {
     while(MAIL_INBOX.length && (MAIL_INBOX[0]===MAIL_PERIMETER || MAIL_INBOX[0]===MAIL_AIRLOSS)){ MAIL_INBOX.shift(); }
     if(evidenceAutopsyTimer){ clearTimeout(evidenceAutopsyTimer); evidenceAutopsyTimer=null; }
     // The hunt is history in a resumed run — never re-run the assassins.
+    deadRun=false; // DEAD_RUN_LATCH_V1: a legitimate resume is a live run again.
     disarmHunt(); huntArmed=false; huntResolved=true; bunkerCleared=true;
     termActive=true; bunkerLive=true; bunkerLocked=false;
     moveFrom=-1; fusePanelOpen=false; pendingBlown=0;
@@ -32882,9 +32944,38 @@ var SA_TUT_AVATARS = {
       systemFailure(res.died);
       return;
     }
-    // Survived — restart the engine if anything is still degraded, then report.
-    if(FUSE.power.lit<4 || FUSE.defense.lit<4 || anyLethalTicking()) armClocks();
     saveBunkerState();
+    /* EMERGENCY_RESUME_FAST_PATH_V1 (2026-09-07): if any lethal system is already at 0 fuses
+       or has less than 60 real seconds of remaining time, the READABILITY_V1 typewriter
+       report + hub-hold sequence used to burn ~27 seconds before the player could touch
+       anything \u2014 long enough for them to die on the animation. Detect that case, skip the
+       animation, and open the fuse panel with instant rendering. Crucially, DEFER arming the
+       live clocks until the panel input is open, so the drain does not tick while the panel
+       is being rendered. This gives the player their reserve seconds to actually act. */
+    var critical = false;
+    for(var i=0;i<LETHAL.length;i++){
+      var k=LETHAL[i];
+      if(FUSE[k].lit===0){ critical=true; break; }
+      if(rem[k]!==null && rem[k] < 60){ critical=true; break; }
+    }
+    if(critical){
+      emergencyRender = true;
+      // Safety: if the promise below never resolves for any reason, don't strand every
+      // future narrative screen in instant-render mode. 5s is well past any real render.
+      var _emergencyTimeout = setTimeout(function(){ emergencyRender = false; }, 5000);
+      typeLine("// EMERGENCY \u2014 SYSTEMS CRITICAL // Away "+fmtAway(res.away)+". Rescue now.",
+        {cls:"saTerm-red", speed:0});
+      fusePanel().then(function(){
+        clearTimeout(_emergencyTimeout);
+        emergencyRender = false;
+        // Only NOW arm the live clocks. The player has the input open with their full
+        // pre-resume budget intact and can immediately press M to move a fuse.
+        armClocks();
+      });
+      return;
+    }
+    // Non-critical: restore the engine if anything is still degraded, then report normally.
+    if(FUSE.power.lit<4 || FUSE.defense.lit<4 || anyLethalTicking()) armClocks();
     var lines=offlineReportLines(res);
     var p=Promise.resolve();
     lines.forEach(function(l){ p=p.then(function(){ return typeLine(l.t, l); }); });
@@ -32910,6 +33001,7 @@ var SA_TUT_AVATARS = {
     perimeterMailShown=false; fuseTriggerFired=false; openingApplied=false; // fresh opening assault each run
     DEPARTMENTS.forEach(function(d){ if(d._memoRead) d._memoRead=false; }); // memos unread again
     // fresh bunker-hunt state each game (armed later, when the HUB first shows)
+    deadRun=false; // DEAD_RUN_LATCH_V1: a brand new run may persist normally again.
     disarmHunt(); huntArmed=false; huntResolved=false; huntStart=0; bunkerCleared=false; termActive=true;
     bunkerPass=genBunkerPass(); bunkerPassTries=0; bunkerLocked=false; bunkerUnlocked=false; // fresh rotating gate each run (death -> open() -> new key + re-lock)
     resetFuses(); moveFrom=-1; disarmClocks(); disarmFuseTrigger(); fusePanelOpen=false; pendingBlown=0; bunkerLive=false; // fuse grid back to SMART BUILD (all 4/4), clocks off, trigger disarmed, no pending damage, bunker not yet live, each game
@@ -32954,7 +33046,14 @@ var SA_TUT_AVATARS = {
     hideInput(); screen.innerHTML=""; busy=false; fails=0; mode="boot"; stopClock();
     clearAllPriorityTimers(); viewingP=-1;
     if(evidenceAutopsyTimer){ clearTimeout(evidenceAutopsyTimer); evidenceAutopsyTimer=null; } // full disconnect -> drop the pending autopsy email
-    termActive=false; disarmHunt(); disarmClocks(); disarmFuseTrigger(); fusePanelOpen=false; // never let hunt, fuse clocks, or the trigger fire after leaving the terminal
+    /* DISCONNECT_PRESERVES_BUDGETS_V1 (2026-09-07): the terminal disconnect used to call
+       disarmClocks() unconditionally, which zeroes the `rem` remaining-time table. A subsequent
+       pagehide/beforeunload/visibilitychange handler would then persist the ZEROED state as if
+       it were the current run. Save the run BEFORE tearing down the live state, and only disarm
+       clocks when the bunker is not still live (i.e. no door choice keeps it running). */
+    if(bunkerLive && runIsPersistable()){ saveBunkerState(); }
+    termActive=false; disarmHunt(); disarmFuseTrigger(); fusePanelOpen=false;
+    if(!bunkerLive){ disarmClocks(); }
     var god=$("saTermGod"); if(god) god.classList.remove("on","fade");
     var death=$("saTermDeath"); if(death) death.classList.remove("on");
     var ack=$("saTermDeathAck"); if(ack){ ack.onclick=null; ack.style.display="none"; }
