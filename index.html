@@ -30859,6 +30859,7 @@ var SA_TUT_AVATARS = {
     if(!cands.length) return null;
     var key=cands[Math.floor(Math.random()*cands.length)];
     FUSE[key].lit--;
+    try{ if(typeof ECON!=="undefined") ECON.onFuseBlown(); }catch(e){} // LOCAL_ECONOMY_V1: shared-pool accounting
     if(LETHAL.indexOf(key)>=0) reconcileClock(key);
     if(key==="comms") clampComms();
     if(!simSilent){ try{ if(window.saTermSfx) window.saTermSfx.blow(); }catch(e){} }
@@ -30899,7 +30900,11 @@ var SA_TUT_AVATARS = {
     // Concentrated damage: drain AIR fully first (the killer), then spill to WATER, then THERMAL.
     for(var i=0;i<BLOW_ORDER.length && blown<n;i++){
       var key=BLOW_ORDER[i];
-      while(FUSE[key].lit>0 && blown<n){ FUSE[key].lit--; blown++; }
+      while(FUSE[key].lit>0 && blown<n){
+        FUSE[key].lit--;
+        try{ if(typeof ECON!=="undefined") ECON.onFuseBlown(); }catch(e){} // LOCAL_ECONOMY_V1
+        blown++;
+      }
       reconcileClock(key);
     }
     if(blown>0){ armClocks(); }
@@ -31156,6 +31161,246 @@ var SA_TUT_AVATARS = {
      a single-player idle layer and is the reason the eventual server path
      exists. */
   var SAVE_KEY = "SA_BUNKER_STATE_V1";
+
+  /* LOCAL_ECONOMY_V1_START =============================================
+     Local Economy v1 (2026-09-07). Shipped on branch feat/local-economy-v1.
+
+     The bunker used to be a decline simulator: a fuse blew, and the only response
+     was to shuffle a shrinking pool between systems. This module adds the
+     earn -> buy -> replace loop that turns permanent fuse loss into a strategic
+     decision. Fuses are still SCARCE; they cannot be printed. They are BOUGHT
+     from a shared, finite market stock using the fixed currency each vendor
+     demands.
+
+     Approved by the user (memory citations):
+       - shared finite fuse pool for whole bunker; all buying/selling from main
+         bunker; sellers demand different currencies (25 Jul 2026, session 310546c6)
+       - five New Markets with FIXED currencies BTC/XRP/USD/ETH/GEARS
+         (28 Jul 2026, session 2a506c0d)
+       - vault reward is OPTIONAL, password-gated, player-initiated bonus
+         (28 Jul 2026, session 2a506c0d)
+       - bunker fuses are bought; Ring chips are conserved; NO cross-tier resource
+         flow (docs/bunker-loss-condition.md)
+
+     Explicitly UNRESOLVED and not decided here:
+       - first-investment source when the player skips every vault. A tiny
+         labelled __starterGrant lets the loop be exercised; a real seed is a
+         separate design decision, not a quietly-added freebie.
+       - fuse lifecycle after a blow. v1 conservatively counts blown fuses as
+         'destroyed' so the total supply gradually shrinks; a future rule may add
+         repair or return-to-stock, but that must be an explicit choice.
+       - exact numeric curves (base cost, growth rate, market yield, reinvest
+         bonus). All numbers below are CONFIGURATION KNOBS with TBD balance. No
+         value here should be quoted as approved balance.
+
+     Tier separation is enforced structurally: this module reads and writes only
+     ECON, FUSE (via reconcileClock), and localStorage under its own key. No Ring,
+     district, biome, or chip identifier appears in the body. The static-check
+     test in tests/local_economy_v1.cjs will fail if that changes. */
+  var ECON_SAVE_KEY = "SA_ECON_STATE_V1";
+  var ECON_TOTAL_SUPPLY = 24; // fixed physical fuse count (all states must sum to this)
+
+  // TBD tuning: unplaytested placeholders. Do NOT quote as approved balance.
+  var ECON_FUSE_BASE_PRICE   = 100;   // vendor base price per fuse
+  var ECON_FUSE_PRICE_GROWTH = 0.08;  // +8% per purchase (compound)
+  var ECON_REINVEST_BONUS    = 0.15;  // 15% growth on reinvest
+  var ECON_PAYOUT_FRACTION   = 1.00;  // payout returns 100% of position (v1 simplest rule)
+  var ECON_STARTER_GRANT = { BTC: 50, XRP: 500, USD: 500, ETH: 5, GEARS: 100 };
+
+  var ECON_MARKETS_DEF = [
+    { id: "ELSALVADOR", label: "El Salvador",   currency: "BTC"   },
+    { id: "SAUDI",      label: "Saudi Arabia",  currency: "XRP"   },
+    { id: "USA",        label: "United States", currency: "USD"   },
+    { id: "INDIA",      label: "India",         currency: "ETH"   },
+    { id: "GEARS",      label: "Gears Corp",    currency: "GEARS" }
+  ];
+
+  // Each vault seeds one currency, one time, if the player enters the correct password.
+  // Passwords are stable strings (not the rotating AZTEC bunker gate) because they
+  // represent old-world account credentials the player has to hunt down / look up.
+  var ECON_VAULTS_DEF = [
+    { id: "ELSALVADOR", currency: "BTC",   password: "CHIVO-2021",       amount: 25 },
+    { id: "SAUDI",      currency: "XRP",   password: "ARAMCO-1933",      amount: 250 },
+    { id: "USA",        currency: "USD",   password: "EAGLE-SCRIP-1913", amount: 250 },
+    { id: "INDIA",      currency: "ETH",   password: "RBI-2015",         amount: 3 },
+    { id: "GEARS",      currency: "GEARS", password: "IRONVALE-COMPACT", amount: 50 }
+  ];
+
+  var ECON = (function(){
+    function freshWallet(){
+      var w = { BTC:0, XRP:0, USD:0, ETH:0, GEARS:0, __starterGrant:false };
+      for(var k in ECON_STARTER_GRANT){
+        if(ECON_STARTER_GRANT.hasOwnProperty(k)) w[k] = ECON_STARTER_GRANT[k];
+      }
+      w.__starterGrant = true;
+      return w;
+    }
+    function freshMarkets(){
+      return ECON_MARKETS_DEF.map(function(m){
+        return { id:m.id, label:m.label, currency:m.currency, position:0 };
+      });
+    }
+    function freshVaults(){
+      return ECON_VAULTS_DEF.map(function(v){
+        return { id:v.id, currency:v.currency, password:v.password, amount:v.amount, claimed:false };
+      });
+    }
+    function freshInventory(){
+      // At game start: no fuses have been installed by ECON, all sit in stock.
+      // The FUSE grid's initial 4/4 allocation is treated as the game's baseline
+      // state and is NOT double-counted against the stock. Only ECON-driven
+      // buys/installs move fuses between availableStock <-> heldByPlayer <-> installed.
+      return {
+        totalSupply: ECON_TOTAL_SUPPLY,
+        availableStock: ECON_TOTAL_SUPPLY,
+        installed: 0,
+        heldByPlayer: 0,
+        destroyed: 0,
+        purchaseCount: 0 // used to compound the vendor price curve
+      };
+    }
+
+    var api = {
+      wallet:    freshWallet(),
+      markets:   freshMarkets(),
+      vaults:    freshVaults(),
+      inventory: freshInventory(),
+      log:       [],
+
+      marketById: function(id){
+        for(var i=0;i<this.markets.length;i++){ if(this.markets[i].id===id) return this.markets[i]; }
+        return null;
+      },
+      vaultById: function(id){
+        for(var i=0;i<this.vaults.length;i++){ if(this.vaults[i].id===id) return this.vaults[i]; }
+        return null;
+      },
+
+      // REINVEST: spend `amount` of the market's fixed currency to grow its position.
+      // Growth: position += amount * (1 + REINVEST_BONUS). Failure returns false and
+      // does NOT touch the wallet.
+      reinvest: function(marketId, amount){
+        var m = this.marketById(marketId);
+        if(!m || !(amount>0)) return false;
+        if((this.wallet[m.currency]||0) < amount) return false;
+        this.wallet[m.currency] -= amount;
+        m.position += amount * (1 + ECON_REINVEST_BONUS);
+        this.log.push({ t: Date.now(), kind:"reinvest", market:marketId, amount:amount });
+        return true;
+      },
+
+      // PAYOUT: cash out the current position in the market's fixed currency.
+      // v1: returns 100% of the position (the reinvest bonus is the yield).
+      // Zero-position payout is a no-op.
+      payout: function(marketId){
+        var m = this.marketById(marketId);
+        if(!m || !(m.position>0)) return 0;
+        var paid = m.position * ECON_PAYOUT_FRACTION;
+        m.position = 0;
+        this.wallet[m.currency] = (this.wallet[m.currency]||0) + paid;
+        this.log.push({ t: Date.now(), kind:"payout", market:marketId, amount:paid });
+        return paid;
+      },
+
+      // Vault seed: optional, one-time, password-gated.
+      claimVaultSeed: function(vaultId, password){
+        var v = this.vaultById(vaultId);
+        if(!v || v.claimed || v.password !== password) return false;
+        v.claimed = true;
+        this.wallet[v.currency] = (this.wallet[v.currency]||0) + v.amount;
+        this.log.push({ t: Date.now(), kind:"vault", vault:vaultId, amount:v.amount });
+        return true;
+      },
+
+      // Vendor quote: base price * (1 + growth)^purchaseCount.
+      quote: function(marketId){
+        var m = this.marketById(marketId);
+        if(!m) return null;
+        var price = ECON_FUSE_BASE_PRICE * Math.pow(1 + ECON_FUSE_PRICE_GROWTH, this.inventory.purchaseCount);
+        return { currency: m.currency, price: Math.round(price*100)/100 };
+      },
+
+      // Buy: transfer 1 fuse from availableStock -> heldByPlayer, debit the wallet
+      // in the vendor's fixed currency. Refuses if stock is empty or funds low.
+      // NO fuse is ever created: purchase requires availableStock > 0.
+      buyFuse: function(marketId){
+        var m = this.marketById(marketId);
+        if(!m) return false;
+        if(this.inventory.availableStock <= 0) return false;
+        var q = this.quote(marketId);
+        if((this.wallet[m.currency]||0) < q.price) return false;
+        this.wallet[m.currency] -= q.price;
+        this.inventory.availableStock -= 1;
+        this.inventory.heldByPlayer  += 1;
+        this.inventory.purchaseCount += 1;
+        this.log.push({ t: Date.now(), kind:"buy", vendor:marketId, price:q.price });
+        return true;
+      },
+
+      // Install: take one fuse from heldByPlayer and add it to a FUSE grid slot.
+      // Refuses if the target is already 4/4 or the player has no spare.
+      installFuse: function(system){
+        if(!FUSE[system]) return false;
+        if(FUSE[system].lit >= 4) return false;
+        if(this.inventory.heldByPlayer <= 0) return false;
+        this.inventory.heldByPlayer -= 1;
+        this.inventory.installed    += 1;
+        FUSE[system].lit += 1;
+        if(LETHAL.indexOf(system) >= 0) reconcileClock(system);
+        if(system === "comms") refitComms();
+        this.log.push({ t: Date.now(), kind:"install", system:system });
+        return true;
+      },
+
+      // Called by the fuse module when a fuse blows. v1 rule: blown fuses are
+      // DESTROYED (not returned to stock). The lifecycle question is unresolved
+      // and this is the conservative choice; a future rule may add a repair path.
+      onFuseBlown: function(){
+        if(this.inventory.installed > 0){
+          this.inventory.installed -= 1;
+          this.inventory.destroyed += 1;
+        }
+      },
+
+      // Persistence hooks. Called from saveBunkerState()/restoreBunkerRun().
+      _serialize: function(){
+        return {
+          v: 1,
+          wallet: this.wallet,
+          markets: this.markets.map(function(m){ return { id:m.id, position:m.position }; }),
+          vaults:  this.vaults.map(function(v){ return { id:v.id, claimed:v.claimed }; }),
+          inv: this.inventory
+        };
+      },
+      _restore: function(s){
+        if(!s || s.v !== 1) return;
+        if(s.wallet) this.wallet = Object.assign(freshWallet(), s.wallet);
+        if(Array.isArray(s.markets)){
+          for(var i=0;i<s.markets.length;i++){
+            var mm = this.marketById(s.markets[i].id);
+            if(mm) mm.position = s.markets[i].position||0;
+          }
+        }
+        if(Array.isArray(s.vaults)){
+          for(var j=0;j<s.vaults.length;j++){
+            var vv = this.vaultById(s.vaults[j].id);
+            if(vv) vv.claimed = !!s.vaults[j].claimed;
+          }
+        }
+        if(s.inv) this.inventory = Object.assign(freshInventory(), s.inv);
+      },
+      _reset: function(){
+        this.wallet    = freshWallet();
+        this.markets   = freshMarkets();
+        this.vaults    = freshVaults();
+        this.inventory = freshInventory();
+        this.log       = [];
+      }
+    };
+    return api;
+  })();
+  /* LOCAL_ECONOMY_V1_END ============================================== */
+
   var OFFLINE_REST_WINDOW_S = 12*3600; // how long the reduced "rest" rate applies
   var OFFLINE_REST_RATE     = 0.35;    // multiplier inside that window
   var OFFLINE_FULL_RATE     = 1.00;    // multiplier beyond it
@@ -31196,6 +31441,9 @@ var SA_TUT_AVATARS = {
         opening:openingApplied, trigger:fuseTriggerFired,
         pass:bunkerPass, unlocked:bunkerUnlocked
       }));
+      // LOCAL_ECONOMY_V1: economy state persists under its own key so v1 can ship
+      // without a bunker-save schema bump.
+      try{ localStorage.setItem(ECON_SAVE_KEY, JSON.stringify(ECON._serialize())); }catch(e){}
       lastSaveTs=Date.now();
     }catch(e){}
   }
@@ -31211,6 +31459,10 @@ var SA_TUT_AVATARS = {
     // DEAD_RUN_LATCH_V1: any explicit clear (death, fresh run) latches deadRun so that a
     // subsequent pagehide/beforeunload/visibilitychange cannot re-persist the corpse.
     try{ localStorage.removeItem(SAVE_KEY); }catch(e){}
+    // LOCAL_ECONOMY_V1: economy save follows the bunker save's lifecycle. When the run
+    // is cleared (death, fresh new game) the economy resets so nothing carries between runs.
+    try{ localStorage.removeItem(ECON_SAVE_KEY); }catch(e){}
+    try{ ECON._reset(); }catch(e){}
     deadRun = true;
   }
   // Periodic write while the clocks run, so a crash or hard close loses seconds, not the run.
@@ -31234,6 +31486,11 @@ var SA_TUT_AVATARS = {
     if(s.pass) bunkerPass=s.pass;
     bunkerUnlocked = !!s.unlocked;
     critBeeped={air:false,water:false,thermal:false,defense:false};
+    // LOCAL_ECONOMY_V1: rehydrate economy alongside the bunker run. Absent save = fresh state.
+    try{
+      var eraw = localStorage.getItem(ECON_SAVE_KEY);
+      if(eraw){ ECON._restore(JSON.parse(eraw)); }
+    }catch(e){}
 
     var gap = Math.max(0, (Date.now()-s.ts)/1000);
     var eff = (gap>=OFFLINE_MIN_GAP_S) ? effectiveOfflineSecs(gap) : 0;
@@ -31644,6 +31901,7 @@ var SA_TUT_AVATARS = {
     ].concat(foreignReserveLines()).concat([
       {t:"", instant:true},
       {t:"  [V] NATIONAL VAULTS", cls:"saTerm-flash", speed:5},
+      {t:"  [M] NEW MARKETS \u2014 fuse economy", cls:"saTerm-flash", speed:5},
       {t:"  [B] BACK", cls:"saTerm-menukey", speed:5}
     ]);
   }
@@ -32225,8 +32483,256 @@ var SA_TUT_AVATARS = {
     var v=(val||"").trim().toUpperCase();
     hideInput(); busy=true;
     if(v==="V"){ typeLine("> NATIONAL VAULTS", {cls:"saTerm-dim", instant:true}).then(vaultsList); }
+    else if(v==="M"){ typeLine("> NEW MARKETS", {cls:"saTerm-dim", instant:true}).then(marketsList); }
     else if(v==="B"){ typeLine("> BACK", {cls:"saTerm-dim", instant:true}).then(function(){ return wait(120); }).then(backToMenu); }
-    else { typeLine("Enter V or B.", {cls:"saTerm-warn", speed:8}).then(function(){ busy=false; askInput("BANK [V / B] >", {mode:"bank", maxlength:2}); }); }
+    else { typeLine("Enter V, M or B.", {cls:"saTerm-warn", speed:8}).then(function(){ busy=false; askInput("BANK [V / M / B] >", {mode:"bank", maxlength:2}); }); }
+  }
+
+  /* ---- NEW MARKETS flow (LOCAL_ECONOMY_V1) -----------------------------
+     Five markets, five fixed currencies, one shared finite fuse pool. Every
+     screen is a menu; no keyboard shortcuts a player can miss. Prices, yields
+     and starter grants are configuration knobs (see LOCAL_ECONOMY_V1_START). */
+  var mSel = null; // currently selected market id
+
+  function fmtMoney(n){
+    if(!isFinite(n)) return "0";
+    var r = Math.round(n*100)/100;
+    return String(r).replace(/\B(?=(\d{3})+(?!\d))/g,",");
+  }
+
+  function walletLine(){
+    var w = ECON.wallet;
+    return "  WALLET  \u0243 "+fmtMoney(w.BTC)+"   XRP "+fmtMoney(w.XRP)+
+           "   $ "+fmtMoney(w.USD)+"   ETH "+fmtMoney(w.ETH)+
+           "   \u2699 "+fmtMoney(w.GEARS);
+  }
+  function inventoryLine(){
+    var i = ECON.inventory;
+    return "  FUSE POOL  stock:"+i.availableStock+"  installed:"+i.installed+
+           "  held:"+i.heldByPlayer+"  destroyed:"+i.destroyed+"  / total:"+i.totalSupply;
+  }
+
+  function marketsList(){
+    var head = [
+      {t:"", instant:true},
+      {t:"// NEW MARKETS \u2014 FUSE ECONOMY //", cls:"saTerm-amber", speed:0},
+      {t:"Fuses are scarce. Buy from the market with the right currency.", cls:"saTerm-dim", speed:0},
+      {t:"-------------------------------------------------", cls:"saTerm-dim", instant:true},
+      {t: walletLine(),    cls:"saTerm-dim",  speed:0},
+      {t: inventoryLine(), cls:"saTerm-dim",  speed:0},
+      {t:"-------------------------------------------------", cls:"saTerm-dim", instant:true}
+    ];
+    return runSeq(head).then(function(){
+      return ECON.markets.reduce(function(ch, m, idx){
+        return ch.then(function(){
+          var q = ECON.quote(m.id);
+          var line = "  ["+(idx+1)+"] "+((m.label+"          ").slice(0,14))+
+                     "  currency: "+m.currency+
+                     "   position: "+fmtMoney(m.position)+
+                     "   fuse: "+fmtMoney(q.price)+" "+m.currency;
+          return typeLine(line, {cls:"saTerm-menukey", speed:0});
+        });
+      }, Promise.resolve());
+    }).then(function(){
+      return runSeq([
+        {t:"-------------------------------------------------", cls:"saTerm-dim", instant:true},
+        {t:"  [V] CLAIM OLD-WORLD VAULT SEED (optional bonus, password-gated)", cls:"saTerm-menukey", speed:0},
+        {t:"  [B] BACK", cls:"saTerm-menukey", speed:0}
+      ]);
+    }).then(function(){
+      busy=false; askInput("MARKETS [1-5 / V / B] >", {mode:"markets", maxlength:2});
+    });
+  }
+
+  function onMarkets(val){
+    var v = (val||"").trim().toUpperCase();
+    hideInput(); busy=true;
+    if(v==="B"){
+      typeLine("> BACK", {cls:"saTerm-dim", instant:true})
+        .then(function(){ return wait(120); })
+        .then(function(){
+          return runSeq(bankLines()).then(function(){
+            busy=false; askInput("BANK [V / M / B] >", {mode:"bank", maxlength:2});
+          });
+        });
+      return;
+    }
+    if(v==="V"){ return void vaultSeedList(); }
+    var idx = parseInt(v,10);
+    if(idx>=1 && idx<=ECON.markets.length){
+      mSel = ECON.markets[idx-1].id;
+      return void marketDetail();
+    }
+    typeLine("Enter 1-5, V or B.", {cls:"saTerm-warn", speed:8})
+      .then(function(){ busy=false; askInput("MARKETS [1-5 / V / B] >", {mode:"markets", maxlength:2}); });
+  }
+
+  function marketDetail(){
+    var m = ECON.marketById(mSel); if(!m){ return marketsList(); }
+    var q = ECON.quote(m.id);
+    var bal = ECON.wallet[m.currency]||0;
+    var seq = [
+      {t:"", instant:true},
+      {t:"// "+m.label.toUpperCase()+" \u2014 "+m.currency+" //", cls:"saTerm-amber", speed:0},
+      {t:"-------------------------------------------------", cls:"saTerm-dim", instant:true},
+      {t:"  Position:  "+fmtMoney(m.position)+" "+m.currency, cls:"saTerm-dim", speed:0},
+      {t:"  Wallet:    "+fmtMoney(bal)+" "+m.currency, cls:"saTerm-dim", speed:0},
+      {t:"  Fuse cost: "+fmtMoney(q.price)+" "+m.currency+"   stock: "+ECON.inventory.availableStock, cls:"saTerm-dim", speed:0},
+      {t:"-------------------------------------------------", cls:"saTerm-dim", instant:true},
+      {t:"  [R] REINVEST (spend "+m.currency+" to grow position)", cls:"saTerm-menukey", speed:0},
+      {t:"  [P] PAYOUT (cash position out in "+m.currency+")", cls:"saTerm-menukey", speed:0},
+      {t:"  [Y] BUY ONE FUSE", cls:"saTerm-menukey", speed:0},
+      {t:"  [I] INSTALL A HELD FUSE INTO A SYSTEM", cls:"saTerm-menukey", speed:0},
+      {t:"  [B] BACK", cls:"saTerm-menukey", speed:0}
+    ];
+    return runSeq(seq).then(function(){
+      busy=false; askInput("MARKET [R / P / Y / I / B] >", {mode:"market", maxlength:2});
+    });
+  }
+
+  function onMarket(val){
+    var v = (val||"").trim().toUpperCase();
+    hideInput(); busy=true;
+    if(v==="B"){ return void marketsList(); }
+    var m = ECON.marketById(mSel); if(!m){ return void marketsList(); }
+    if(v==="R"){
+      typeLine("Amount of "+m.currency+" to reinvest?", {cls:"saTerm-dim", speed:0})
+        .then(function(){ busy=false; askInput("AMOUNT "+m.currency+" > ", {mode:"marketReinvest", maxlength:12}); });
+      return;
+    }
+    if(v==="P"){
+      var paid = ECON.payout(m.id);
+      if(paid>0){
+        typeLine("Payout: +"+fmtMoney(paid)+" "+m.currency, {cls:"saTerm-bright", speed:0})
+          .then(function(){ return wait(200); }).then(marketDetail);
+      } else {
+        typeLine("No position to cash out.", {cls:"saTerm-warn", speed:0})
+          .then(function(){ return wait(200); }).then(marketDetail);
+      }
+      return;
+    }
+    if(v==="Y"){
+      var q = ECON.quote(m.id);
+      var ok = ECON.buyFuse(m.id);
+      if(ok){
+        typeLine("Purchased 1 fuse for "+fmtMoney(q.price)+" "+m.currency+". Held: "+ECON.inventory.heldByPlayer, {cls:"saTerm-bright", speed:0})
+          .then(function(){ return wait(200); }).then(marketDetail);
+      } else if(ECON.inventory.availableStock<=0){
+        typeLine("No fuses left in circulation. Stock: 0.", {cls:"saTerm-red", speed:0})
+          .then(function(){ return wait(200); }).then(marketDetail);
+      } else {
+        typeLine("Insufficient "+m.currency+". Need "+fmtMoney(q.price)+".", {cls:"saTerm-warn", speed:0})
+          .then(function(){ return wait(200); }).then(marketDetail);
+      }
+      return;
+    }
+    if(v==="I"){
+      if(ECON.inventory.heldByPlayer<=0){
+        typeLine("No held fuse. Buy one first.", {cls:"saTerm-warn", speed:0})
+          .then(function(){ return wait(200); }).then(marketDetail);
+        return;
+      }
+      typeLine("Install into which system? [1] air  [2] water  [3] thermal  [4] defense  [5] power  [6] comms", {cls:"saTerm-dim", speed:0})
+        .then(function(){ busy=false; askInput("INSTALL [1-6] > ", {mode:"marketInstall", maxlength:2}); });
+      return;
+    }
+    typeLine("Enter R, P, Y, I or B.", {cls:"saTerm-warn", speed:8})
+      .then(function(){ busy=false; askInput("MARKET [R / P / Y / I / B] >", {mode:"market", maxlength:2}); });
+  }
+
+  function onMarketReinvest(val){
+    var m = ECON.marketById(mSel); if(!m){ hideInput(); return void marketsList(); }
+    hideInput(); busy=true;
+    var amt = parseFloat((val||"").trim());
+    if(!(amt>0)){
+      typeLine("Invalid amount.", {cls:"saTerm-warn", speed:0})
+        .then(function(){ return wait(150); }).then(marketDetail);
+      return;
+    }
+    var ok = ECON.reinvest(m.id, amt);
+    typeLine(ok? ("Reinvested "+fmtMoney(amt)+" "+m.currency+".") : ("Reinvest failed \u2014 not enough "+m.currency+"."),
+      {cls: ok?"saTerm-bright":"saTerm-warn", speed:0})
+      .then(function(){ return wait(200); }).then(marketDetail);
+  }
+
+  var INSTALL_KEY_MAP = {"1":"air","2":"water","3":"thermal","4":"defense","5":"power","6":"comms"};
+  function onMarketInstall(val){
+    hideInput(); busy=true;
+    var key = INSTALL_KEY_MAP[(val||"").trim()];
+    if(!key){
+      typeLine("Enter 1-6.", {cls:"saTerm-warn", speed:0})
+        .then(function(){ return wait(150); }).then(marketDetail);
+      return;
+    }
+    var ok = ECON.installFuse(key);
+    if(ok){
+      typeLine("Installed into "+key.toUpperCase()+". Now at "+FUSE[key].lit+"/4.", {cls:"saTerm-bright", speed:0})
+        .then(function(){ return wait(200); }).then(marketDetail);
+    } else if(FUSE[key] && FUSE[key].lit>=4){
+      typeLine("That system is already 4/4.", {cls:"saTerm-warn", speed:0})
+        .then(function(){ return wait(200); }).then(marketDetail);
+    } else {
+      typeLine("Install failed.", {cls:"saTerm-warn", speed:0})
+        .then(function(){ return wait(200); }).then(marketDetail);
+    }
+  }
+
+  // Vault seed selection: pick a vault, then enter the password.
+  var vSeedSel = null;
+  function vaultSeedList(){
+    var head = [
+      {t:"", instant:true},
+      {t:"// OLD-WORLD VAULTS \u2014 SEED CLAIM //", cls:"saTerm-amber", speed:0},
+      {t:"Each vault pays ONCE, in its own currency, if you enter the correct password.", cls:"saTerm-dim", speed:0},
+      {t:"Ignoring them is fine \u2014 they are optional bonuses, not required progression.", cls:"saTerm-dim", speed:0},
+      {t:"-------------------------------------------------", cls:"saTerm-dim", instant:true}
+    ];
+    return runSeq(head).then(function(){
+      return ECON.vaults.reduce(function(ch, v, idx){
+        return ch.then(function(){
+          var status = v.claimed ? " \u2014 CLAIMED" : "";
+          var line = "  ["+(idx+1)+"] "+v.id+"   pays: "+v.amount+" "+v.currency+status;
+          return typeLine(line, {cls: v.claimed?"saTerm-dim":"saTerm-menukey", speed:0});
+        });
+      }, Promise.resolve());
+    }).then(function(){
+      return typeLine("  [B] BACK", {cls:"saTerm-menukey", speed:0});
+    }).then(function(){
+      busy=false; askInput("CLAIM VAULT [1-"+ECON.vaults.length+" / B] >", {mode:"vaultSeed", maxlength:2});
+    });
+  }
+
+  function onVaultSeed(val){
+    var v = (val||"").trim().toUpperCase();
+    hideInput(); busy=true;
+    if(v==="B"){ return void marketsList(); }
+    var idx = parseInt(v,10);
+    if(!(idx>=1 && idx<=ECON.vaults.length)){
+      typeLine("Enter 1-"+ECON.vaults.length+" or B.", {cls:"saTerm-warn", speed:0})
+        .then(function(){ busy=false; askInput("CLAIM VAULT [1-"+ECON.vaults.length+" / B] >", {mode:"vaultSeed", maxlength:2}); });
+      return;
+    }
+    vSeedSel = ECON.vaults[idx-1];
+    if(vSeedSel.claimed){
+      typeLine("That vault is already claimed. Each vault pays only once.", {cls:"saTerm-warn", speed:0})
+        .then(function(){ return wait(200); }).then(vaultSeedList);
+      return;
+    }
+    typeLine("Enter the vault password.", {cls:"saTerm-dim", speed:0})
+      .then(function(){ busy=false; askInput("PASSWORD > ", {mode:"vaultSeedPw", maxlength:32}); });
+  }
+
+  function onVaultSeedPw(val){
+    hideInput(); busy=true;
+    if(!vSeedSel){ return void vaultSeedList(); }
+    var ok = ECON.claimVaultSeed(vSeedSel.id, String(val||"").trim());
+    if(ok){
+      typeLine("Vault opened. +"+vSeedSel.amount+" "+vSeedSel.currency+" credited.", {cls:"saTerm-bright", speed:0})
+        .then(function(){ return wait(300); }).then(vaultSeedList);
+    } else {
+      typeLine("Access denied. Wrong password.", {cls:"saTerm-warn", speed:0})
+        .then(function(){ return wait(300); }).then(vaultSeedList);
+    }
   }
 
   function vaultsList(){
@@ -33002,6 +33508,7 @@ var SA_TUT_AVATARS = {
     DEPARTMENTS.forEach(function(d){ if(d._memoRead) d._memoRead=false; }); // memos unread again
     // fresh bunker-hunt state each game (armed later, when the HUB first shows)
     deadRun=false; // DEAD_RUN_LATCH_V1: a brand new run may persist normally again.
+    try{ ECON._reset(); }catch(e){}   // LOCAL_ECONOMY_V1: fresh wallet, markets, vaults, inventory each run.
     disarmHunt(); huntArmed=false; huntResolved=false; huntStart=0; bunkerCleared=false; termActive=true;
     bunkerPass=genBunkerPass(); bunkerPassTries=0; bunkerLocked=false; bunkerUnlocked=false; // fresh rotating gate each run (death -> open() -> new key + re-lock)
     resetFuses(); moveFrom=-1; disarmClocks(); disarmFuseTrigger(); fusePanelOpen=false; pendingBlown=0; bunkerLive=false; // fuse grid back to SMART BUILD (all 4/4), clocks off, trigger disarmed, no pending damage, bunker not yet live, each game
@@ -33321,6 +33828,12 @@ var SA_TUT_AVATARS = {
       else if(mode==="aegis") onAegis(v);
       else if(mode==="mailview") onMailView(v);
       else if(mode==="bank") onBank(v);
+      else if(mode==="markets") onMarkets(v);
+      else if(mode==="market") onMarket(v);
+      else if(mode==="marketReinvest") onMarketReinvest(v);
+      else if(mode==="marketInstall") onMarketInstall(v);
+      else if(mode==="vaultSeed") onVaultSeed(v);
+      else if(mode==="vaultSeedPw") onVaultSeedPw(v);
       else if(mode==="vaults") onVaults(v);
       else if(mode==="vaultCur") onVaultCur(v);
       else if(mode==="vaultAmt") onVaultAmt(v);
