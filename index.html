@@ -31096,8 +31096,11 @@ var SA_TUT_AVATARS = {
     }
     // ---- DEFENSE-driven SABOTAGE: below 4/4, intruders blow life-support fuses over time.
     // Accrues on the SAME real delta so it also applies across offline gaps. 4/4 = off.
+    // HOME_NODE_V1: sleeping at Home freezes hostile timers ONLY. Baseline decay and
+    // life-support drain (above) are NOT frozen \u2014 sabotage is the only clock rest silences.
     var sabInt = sabotageInterval();
-    if(sabInt!==null){
+    var _asleep = (typeof HOME !== "undefined") && HOME.isAsleep();
+    if(sabInt!==null && !_asleep){
       sabotageAccum += fullDt;   // HOSTILE: full rate, always
       var blows=0;
       while(sabotageAccum >= sabInt && blows<20){ sabotageAccum -= sabInt; blows++; }
@@ -31123,6 +31126,13 @@ var SA_TUT_AVATARS = {
     }
     // Instant-death: DEFENSE at 0 fuses = immediate breach.
     if(FUSE.defense.lit===0 && !died) died="defense";
+    // HOME_NODE_V1: auto-wake the moment the sleep window elapses. Any drain that
+    // just accrued has already been billed above, so this is a clean transition.
+    try{
+      if(typeof HOME !== "undefined" && HOME.isAsleep() && HOME.sleepRemaining() <= 0){
+        HOME.wake();
+      }
+    }catch(e){}
     return died;
   }
   // TRUE in-place refresh: rewrite ONLY the 6 captured system rows' text/colour every tick.
@@ -31401,6 +31411,127 @@ var SA_TUT_AVATARS = {
   })();
   /* LOCAL_ECONOMY_V1_END ============================================== */
 
+  /* HOME_NODE_V1_START ==================================================
+     Home / sleep bunker (2026-09-07). Second answering node in the mesh.
+
+     Contract (from docs/offline-drain.md:97 and settled council notes):
+       - resting freezes HOSTILE timers only (DEFENSE sabotage). Baseline
+         decay and life-support drain continue while asleep.
+       - entry is gated so the player cannot flee mid-crisis.
+       - early return carries a cost.
+       - the fatigue lever as drafted was REJECTED. v1 uses a FUSE cost so
+         Home ties directly into the Local Economy loop and preserves scarcity.
+
+     UNRESOLVED, exposed as configuration knobs:
+       - exact sleep-duration options and per-tier fuse costs.
+       - refund-on-early-return fraction. v1 defaults to 50%: a rest cut
+         short is still a rest paid for.
+
+     Numeric knobs are placeholders. TBD balance, do not quote as approved. */
+  var HOME_ENTRY_GATE_S = 60;   // lethal system remaining below this = 'in crisis', entry refused.
+  var HOME_EARLY_RETURN_REFUND = 0.5;   // fraction of fuse cost refunded on wake before duration.
+  var HOME_SLEEP_OPTIONS = [
+    { id: "nap",   label: "NAP (15 min)",   durationS: 15*60,      cost: 1 },
+    { id: "night", label: "NIGHT (8 hours)", durationS: 8*3600,     cost: 2 },
+    { id: "long",  label: "LONG REST (24h)", durationS: 24*3600,    cost: 3 }
+  ];
+
+  var HOME = (function(){
+    // Sleep state. When asleep, sabotage accrual is suppressed by advanceBy()
+    // via HOME.isAsleep(); life-support and baseline decay are UNAFFECTED.
+    var state = {
+      asleep:      false,
+      startedAt:   0,   // Date.now() when the current sleep began
+      durationS:   0,   // full requested duration in real seconds
+      spentCost:   0    // fuses spent to enter the current sleep (for refund math)
+    };
+
+    function _reset(){
+      state.asleep = false;
+      state.startedAt = 0;
+      state.durationS = 0;
+      state.spentCost = 0;
+    }
+
+    // Any lethal system in critical territory OR DEFENSE at 0/4 = mid-crisis. Entry refused.
+    function _inCrisis(){
+      if(FUSE.defense.lit <= 0) return true;
+      for(var i=0;i<LETHAL.length;i++){
+        var k = LETHAL[i];
+        if(FUSE[k].lit === 0) return true;
+        if(rem[k] !== null && rem[k] < HOME_ENTRY_GATE_S) return true;
+      }
+      return false;
+    }
+
+    function _optionFor(durationS){
+      for(var i=0;i<HOME_SLEEP_OPTIONS.length;i++){
+        if(HOME_SLEEP_OPTIONS[i].durationS === durationS) return HOME_SLEEP_OPTIONS[i];
+      }
+      return null;
+    }
+
+    var api = {
+      // Try to enter sleep. Returns true on success, false with no state change on failure.
+      start: function(durationS){
+        if(state.asleep) return false;
+        var opt = _optionFor(durationS);
+        if(!opt) return false;
+        if(_inCrisis()) return false;                            // entry gate
+        if((ECON.inventory.heldByPlayer||0) < opt.cost) return false;   // no fuse to pay
+        // Spend the fuse(s): they leave heldByPlayer -> destroyed (consumed by rest).
+        ECON.inventory.heldByPlayer -= opt.cost;
+        ECON.inventory.destroyed    += opt.cost;
+        state.asleep    = true;
+        state.startedAt = Date.now();
+        state.durationS = durationS;
+        state.spentCost = opt.cost;
+        return true;
+      },
+
+      // Wake up. Auto-called by advanceBy() when the duration has elapsed. Manual
+      // wake before the duration is an EARLY RETURN and receives a partial refund.
+      wake: function(){
+        if(!state.asleep) return false;
+        var elapsedS = (Date.now() - state.startedAt) / 1000;
+        var wasEarly = elapsedS < state.durationS;
+        if(wasEarly && state.spentCost > 0){
+          var refund = Math.floor(state.spentCost * HOME_EARLY_RETURN_REFUND);
+          if(refund > 0){
+            // Refund goes back to heldByPlayer (returned to the shared pool via 'destroyed' rollback).
+            ECON.inventory.heldByPlayer += refund;
+            ECON.inventory.destroyed    -= refund;
+          }
+        }
+        _reset();
+        return true;
+      },
+
+      isAsleep:       function(){ return !!state.asleep; },
+      sleepRemaining: function(){
+        if(!state.asleep) return 0;
+        var elapsedS = (Date.now() - state.startedAt) / 1000;
+        return Math.max(0, state.durationS - elapsedS);
+      },
+
+      // Persistence.
+      _serialize: function(){
+        return state.asleep ? { v:1, startedAt:state.startedAt, durationS:state.durationS, spentCost:state.spentCost } : null;
+      },
+      _restore: function(s){
+        _reset();
+        if(!s || s.v !== 1) return;
+        state.asleep    = true;
+        state.startedAt = s.startedAt||0;
+        state.durationS = s.durationS||0;
+        state.spentCost = s.spentCost||0;
+      },
+      _reset: _reset
+    };
+    return api;
+  })();
+  /* HOME_NODE_V1_END ==================================================== */
+
   var OFFLINE_REST_WINDOW_S = 12*3600; // how long the reduced "rest" rate applies
   var OFFLINE_REST_RATE     = 0.35;    // multiplier inside that window
   var OFFLINE_FULL_RATE     = 1.00;    // multiplier beyond it
@@ -31444,6 +31575,12 @@ var SA_TUT_AVATARS = {
       // LOCAL_ECONOMY_V1: economy state persists under its own key so v1 can ship
       // without a bunker-save schema bump.
       try{ localStorage.setItem(ECON_SAVE_KEY, JSON.stringify(ECON._serialize())); }catch(e){}
+      // HOME_NODE_V1: sleep state rides on the ECON save envelope under a distinct key.
+      try{
+        var h = HOME._serialize();
+        if(h) localStorage.setItem("SA_HOME_STATE_V1", JSON.stringify(h));
+        else  localStorage.removeItem("SA_HOME_STATE_V1");
+      }catch(e){}
       lastSaveTs=Date.now();
     }catch(e){}
   }
@@ -31463,6 +31600,9 @@ var SA_TUT_AVATARS = {
     // is cleared (death, fresh new game) the economy resets so nothing carries between runs.
     try{ localStorage.removeItem(ECON_SAVE_KEY); }catch(e){}
     try{ ECON._reset(); }catch(e){}
+    // HOME_NODE_V1: sleep never outlives the run that created it.
+    try{ localStorage.removeItem("SA_HOME_STATE_V1"); }catch(e){}
+    try{ HOME._reset(); }catch(e){}
     deadRun = true;
   }
   // Periodic write while the clocks run, so a crash or hard close loses seconds, not the run.
@@ -31490,6 +31630,11 @@ var SA_TUT_AVATARS = {
     try{
       var eraw = localStorage.getItem(ECON_SAVE_KEY);
       if(eraw){ ECON._restore(JSON.parse(eraw)); }
+    }catch(e){}
+    // HOME_NODE_V1: rehydrate sleep state.
+    try{
+      var hraw = localStorage.getItem("SA_HOME_STATE_V1");
+      if(hraw){ HOME._restore(JSON.parse(hraw)); }
     }catch(e){}
 
     var gap = Math.max(0, (Date.now()-s.ts)/1000);
@@ -33509,6 +33654,7 @@ var SA_TUT_AVATARS = {
     // fresh bunker-hunt state each game (armed later, when the HUB first shows)
     deadRun=false; // DEAD_RUN_LATCH_V1: a brand new run may persist normally again.
     try{ ECON._reset(); }catch(e){}   // LOCAL_ECONOMY_V1: fresh wallet, markets, vaults, inventory each run.
+    try{ HOME._reset(); }catch(e){}   // HOME_NODE_V1: never carry sleep across a new run.
     disarmHunt(); huntArmed=false; huntResolved=false; huntStart=0; bunkerCleared=false; termActive=true;
     bunkerPass=genBunkerPass(); bunkerPassTries=0; bunkerLocked=false; bunkerUnlocked=false; // fresh rotating gate each run (death -> open() -> new key + re-lock)
     resetFuses(); moveFrom=-1; disarmClocks(); disarmFuseTrigger(); fusePanelOpen=false; pendingBlown=0; bunkerLive=false; // fuse grid back to SMART BUILD (all 4/4), clocks off, trigger disarmed, no pending damage, bunker not yet live, each game
@@ -33628,13 +33774,21 @@ var SA_TUT_AVATARS = {
      looking at a dead mesh, not an unfinished menu. */
   function networkLines(){
     var comms=FUSE.comms.lit;
+    // HOME_NODE_V1: Home now answers. Line label reflects sleep state.
+    var homeLine;
+    if(HOME.isAsleep()){
+      var rs = Math.round(HOME.sleepRemaining());
+      homeLine = "  [2] HOME ..... ASLEEP \u00b7 "+rs+"s left \u00b7 sabotage frozen";
+    } else {
+      homeLine = "  [2] HOME ..... ONLINE \u00b7 sleep + medical";
+    }
     return [
       {t:"", instant:true},
       {t:"// BUNKER NETWORK \u00b7 LOCAL MESH //", cls:"saTerm-amber", speed:22},
-      {t:"Four sites on the mesh. Two answer.", cls:"saTerm-dim", speed:18},
+      {t:"Three sites on the mesh. Depot is still dark.", cls:"saTerm-dim", speed:18},
       {t:"-------------------------------------------------", cls:"saTerm-dim", instant:true},
       {t:"  [1] LOCAL .... NODE 7 \u00b7 ONLINE \u00b7 life support grid", cls:"saTerm-menukey", speed:16},
-      {t:"  [2] HOME ..... NO CARRIER \u00b7 sleep + medical", cls:"saTerm-red", speed:16},
+      {t:homeLine, cls:(HOME.isAsleep()?"saTerm-bright":"saTerm-menukey"), speed:16},
       {t:"  [3] DEPOT .... NO CARRIER \u00b7 workers + security", cls:"saTerm-red", speed:16},
       {t:"  [4] COMMS .... "+comms+"/4 \u00b7 outside link \u00b7 sensor layer", cls:(comms>0?"saTerm-menukey":"saTerm-red"), speed:16},
       {t:"", instant:true},
@@ -33710,6 +33864,76 @@ var SA_TUT_AVATARS = {
     typeLine("Enter 1-3 or B.", {cls:"saTerm-warn", speed:20})
       .then(function(){ busy=false; askInput("SITE FILE [1-3 / B] >", {mode:"sitefile", maxlength:2}); });
   }
+  /* HOME_NODE_V1: dedicated screen for the Home / sleep bunker. Always reachable
+     from the mesh once selected. Actions are numeric so the same input mode works
+     for both the sleep menu and any acknowledgement prompt afterwards. */
+  function homeScreen(){
+    clearScreen();
+    var seq = [
+      {t:"", instant:true},
+      {t:"// HOME \u00b7 SLEEP + MEDICAL //", cls:"saTerm-amber", speed:0},
+      {t:"-------------------------------------------------", cls:"saTerm-dim", instant:true}
+    ];
+    if(HOME.isAsleep()){
+      var rs = Math.round(HOME.sleepRemaining());
+      seq.push({t:"  Currently ASLEEP. "+rs+"s remaining. Sabotage frozen; life-support and decay still run.", cls:"saTerm-bright", speed:0});
+      seq.push({t:"  [W] WAKE EARLY (partial fuse refund)", cls:"saTerm-menukey", speed:0});
+      seq.push({t:"  [B] BACK", cls:"saTerm-menukey", speed:0});
+    } else {
+      seq.push({t:"  Held fuses available: "+ECON.inventory.heldByPlayer+"   (rest consumes fuses from the shared pool)", cls:"saTerm-dim", speed:0});
+      seq.push({t:"  Rest is gated: mid-crisis entries are refused (perimeter breach, or lethal system near zero).", cls:"saTerm-dim", speed:0});
+      seq.push({t:"-------------------------------------------------", cls:"saTerm-dim", instant:true});
+      for(var i=0;i<HOME_SLEEP_OPTIONS.length;i++){
+        var opt = HOME_SLEEP_OPTIONS[i];
+        seq.push({t:"  ["+(i+1)+"] "+opt.label+"   cost: "+opt.cost+" fuse"+(opt.cost>1?"s":""), cls:"saTerm-menukey", speed:0});
+      }
+      seq.push({t:"  [B] BACK", cls:"saTerm-menukey", speed:0});
+    }
+    return runSeq(seq).then(function(){
+      busy=false;
+      var prompt = HOME.isAsleep() ? "HOME [W / B] >" : ("HOME [1-"+HOME_SLEEP_OPTIONS.length+" / B] >");
+      askInput(prompt, {mode:"home", maxlength:2});
+    });
+  }
+
+  function onHome(val){
+    var v=(val||"").trim().toUpperCase();
+    hideInput(); busy=true;
+    if(v==="B"){ return void bunkerNetwork(); }
+    if(HOME.isAsleep()){
+      if(v==="W"){
+        HOME.wake();
+        typeLine("Awake. Sabotage clock re-armed.", {cls:"saTerm-bright", speed:0})
+          .then(function(){ return wait(200); }).then(homeScreen);
+        return;
+      }
+      typeLine("Enter W or B.", {cls:"saTerm-warn", speed:0})
+        .then(function(){ busy=false; askInput("HOME [W / B] >", {mode:"home", maxlength:2}); });
+      return;
+    }
+    var idx = parseInt(v,10);
+    if(idx>=1 && idx<=HOME_SLEEP_OPTIONS.length){
+      var opt = HOME_SLEEP_OPTIONS[idx-1];
+      var ok = HOME.start(opt.durationS);
+      if(ok){
+        typeLine("Sleep started: "+opt.label+". Consumed "+opt.cost+" fuse"+(opt.cost>1?"s":"")+".",
+          {cls:"saTerm-bright", speed:0})
+          .then(function(){ return wait(200); }).then(homeScreen);
+      } else if(ECON.inventory.heldByPlayer < opt.cost){
+        typeLine("Insufficient held fuses. Need "+opt.cost+", have "+ECON.inventory.heldByPlayer+". Buy fuses from NEW MARKETS.",
+          {cls:"saTerm-warn", speed:0})
+          .then(function(){ return wait(300); }).then(homeScreen);
+      } else {
+        typeLine("Rest refused: bunker is in crisis (perimeter breach or lethal system critical). Stabilise first.",
+          {cls:"saTerm-warn", speed:0})
+          .then(function(){ return wait(300); }).then(homeScreen);
+      }
+      return;
+    }
+    typeLine("Enter 1-"+HOME_SLEEP_OPTIONS.length+" or B.", {cls:"saTerm-warn", speed:0})
+      .then(function(){ busy=false; askInput("HOME [1-"+HOME_SLEEP_OPTIONS.length+" / B] >", {mode:"home", maxlength:2}); });
+  }
+
   function onNetwork(val){
     var v=(val||"").trim().toUpperCase();
     hideInput(); busy=true;
@@ -33724,10 +33948,16 @@ var SA_TUT_AVATARS = {
         .then(gotoBunkerControls);
       return;
     }
-    if(v==="2" || v==="3"){
-      var who = (v==="2") ? "HOME" : "DEPOT";
-      typeLine("> "+who, {cls:"saTerm-dim", instant:true})
-        .then(function(){ return typeLine("DIALLING "+who+"....", {cls:"saTerm-dim", speed:45}); })
+    if(v==="2"){
+      // HOME_NODE_V1: Home now answers. Route to the home screen.
+      typeLine("> HOME", {cls:"saTerm-dim", instant:true})
+        .then(function(){ return wait(120); })
+        .then(homeScreen);
+      return;
+    }
+    if(v==="3"){
+      typeLine("> DEPOT", {cls:"saTerm-dim", instant:true})
+        .then(function(){ return typeLine("DIALLING DEPOT....", {cls:"saTerm-dim", speed:45}); })
         .then(function(){ return wait(700); })
         .then(function(){ return typeLine("NO CARRIER.", {cls:"saTerm-red", speed:40}); })
         .then(function(){ return typeLine("The site has never answered. There is no route from here.", {cls:"saTerm-dim", speed:22}); })
@@ -33834,6 +34064,7 @@ var SA_TUT_AVATARS = {
       else if(mode==="marketInstall") onMarketInstall(v);
       else if(mode==="vaultSeed") onVaultSeed(v);
       else if(mode==="vaultSeedPw") onVaultSeedPw(v);
+      else if(mode==="home") onHome(v);
       else if(mode==="vaults") onVaults(v);
       else if(mode==="vaultCur") onVaultCur(v);
       else if(mode==="vaultAmt") onVaultAmt(v);
