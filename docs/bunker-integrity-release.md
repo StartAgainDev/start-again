@@ -20,22 +20,14 @@ These are correctness and usability fixes, not a balance lock. Fuse tiers, POWER
 
 The message hardening is the only additional non-bunker code change. The pre-publish review identified the older handler as an injection/spoofing risk, so the release closes that issue without changing battle outcomes, rewards, or rules.
 
-## Open design decision: full capacity
+## Full capacity (decided)
 
-Reaching 4/4 clears a system's countdown, so a later fuse loss starts that tier's full budget. A spare fuse moved into a system and back out again can therefore refill a depleted reserve. This release keeps that existing rule.
+The integrity hotfix kept the old instant-refill rule while the decision was open. The terminal-pacing release replaces it with a gradual 24-hour refill and shows the reserve at 4/4; see `docs/terminal-pacing-and-bunker-rules.md`.
 
-| Option | Effect | Cost |
-|---|---|---|
-| Instant refill at 4/4 (current) | Simple; 4/4 always means fully repaired | Attentive players can reset any reserve at will |
-| Gradual refill at 4/4 | Closes the trick; full capacity still repairs | Needs a refill rate and a visible reserve at 4/4 |
-| No refill | Closes the trick | Every failure compounds; needs a visible reserve at 4/4 |
-
-An earlier draft of this release used no refill. It was withdrawn before deployment because the panel still showed a full reserve at 4/4, failures became permanent, and a newly installed fuse would no longer restore a system.
-
-## Known pre-existing issues (not changed here)
+## Pre-existing issues and their fixes
 
 - The host sends `X-Frame-Options: DENY` and `frame-ancestors 'none'` for every page, including `presidential_command.html`, so the game could not embed its own Presidential Command panel by URL. The command-panel release fixes this by rendering the panel through `srcdoc`; see `docs/command-panel-embedding.md`.
-- Choosing the Single Player door does not stop bunker clocks that are already running, for example after the opening assault, although that door is meant to have no survival timer.
+- Choosing the Single Player door did not stop bunker clocks that were already running. The terminal-pacing release freezes the bunker while Single Player is active; see `docs/terminal-pacing-and-bunker-rules.md`.
 
 ## Repeatable checks
 
