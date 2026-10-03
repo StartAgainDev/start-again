@@ -14,7 +14,8 @@ Time the terminal spends printing text is now credited back while the hunt is ar
 
 - Text prints in half its previous time, with an 8 ms-per-character floor (`TYPE_SCALE = 0.5`, `TYPE_FLOOR = 8`).
 - Press Enter or Space, or tap the screen, while text is printing to finish it instantly. The skip lasts until the next prompt.
-- Readability is unchanged where it matters: every screen that clears still waits for PRESS ENTER.
+- Existing explicit PRESS ENTER holds remain in place. Skipping text does not automatically answer the next prompt.
+- On phones, opening a prompt re-scrolls the terminal so the last menu options stay visible above the input.
 
 ## Gradual refill at 4/4 (`FULL_CAPACITY_REFILL_V1`)
 
@@ -32,11 +33,23 @@ Time the terminal spends printing text is now credited back while the hunt is ar
 
 ## Validation
 
-- `npm test` adds 17 bunker checks. The release branch passes 58 checks; the main-based branch passes 94.
+- `npm test` adds 19 bunker checks. The release branch passes 60 checks; the main-based branch passes 96.
 - Chromium, same human pacing (21 seconds of reading and thinking, plus typing the key):
-  - Live build: GUARDS was INEFFECTIVE.
-  - Candidate: 71 seconds remained at Bunker Defense, and GUARDS took a prisoner.
-- The hub printed in 8.2 seconds on the live build, 4.5 seconds on the candidate, and 1.0 second with Space pressed.
+  - Previous live build: GUARDS was INEFFECTIVE.
+  - New build: 71 seconds remained at Bunker Defense, and GUARDS took a prisoner.
+- The hub printed in 8.2 seconds on the previous live build, 4.5 seconds on the new build, and 1.0 second with Space pressed.
+
+## Production verification
+
+Runtime commit `18e4ffa` was published to [start-again.pplx.app](https://start-again.pplx.app) on 3 October 2026 after explicit approval. All seven production files match the tested bundle, and [release CI passed](https://github.com/StartAgainDev/start-again/actions/runs/37110409754).
+
+- **GUARDS:** a production run with reading and typing delays captured a prisoner.
+- **Skipping and phones:** Enter and Space left the next input empty; tapping reached the hub in approximately 1.1 seconds at 375 × 812, with options [5] and [6] visible.
+- **Reserve:** real fuse moves showed a partially filled reserve at 4/4 and retained it after dropping to 3/4, rather than resetting it to full.
+- **Pause and resume:** Single Player preserved AIR at 156,443.3 seconds through a 15-second observation and reload; returning showed the no-drift message, then normal drain resumed.
+- **Safety:** an invalid Bunker option re-prompted, Escape preserved the save, and no page-level JavaScript errors appeared in these flows.
+
+Long-duration refill and offline-freeze behavior were checked by deterministic tests; no 24-hour real-time test is claimed. Browser phone emulation is not a physical-device certification.
 
 ## Tuning
 
