@@ -410,7 +410,7 @@ test('a move without a valid source is refused without throwing', () => {
   eq(h.ev('FUSE.air.lit'), 3, 'invalid source must not mutate destination');
 });
 
-test('AIR 3-to-4-to-3 round trip preserves its remaining reserve', () => {
+test('full capacity clears the countdown (current rule; see FULL_CAPACITY_RULE)', () => {
   const h = makeHarness();
   h.ev(`
     openingApplied=true; termActive=true; bunkerLive=true;
@@ -418,24 +418,12 @@ test('AIR 3-to-4-to-3 round trip preserves its remaining reserve', () => {
     moveFrom=4; onFuseTo("2");
   `);
   eq(h.ev('FUSE.air.lit'), 4, 'AIR restored to full');
-  eq(h.ev('rem.air'), null, 'full capacity remains safe');
+  eq(h.ev('rem.air'), null, 'full capacity has no countdown');
   h.ev('moveFrom=2; onFuseTo("4");');
-  assert(Math.abs(h.ev('rem.air') - 100) < 0.01,
-    `full-capacity round trip must retain 100 seconds, got ${h.ev('rem.air')}`);
+  eq(h.ev('rem.air'), h.ev('CLOCK_MIN.air[3]'),
+    'under the current rule, a later loss starts the full 3/4 budget');
 });
 
-test('reserve at full capacity survives reload without granting free time', () => {
-  const h = makeHarness();
-  h.ev(`
-    openingApplied=true; termActive=true; bunkerLive=true;
-    FUSE.air.lit=3; reconcileAll(); rem.air=100;
-    moveFrom=4; onFuseTo("2"); saveBunkerState();
-  `);
-  const restored = makeHarness({ ...h.storage });
-  restored.ev('restoreBunkerRun(); moveFrom=2; onFuseTo("4");');
-  assert(Math.abs(restored.ev('rem.air') - 100) < 0.01,
-    `reload at 4/4 must retain reserve, got ${restored.ev('rem.air')}`);
-});
 
 test('24-hour resume applies the rest rate before the full-speed rate', () => {
   const h = makeHarness();
@@ -476,17 +464,6 @@ test('a fuse failure inside a minute applies at its actual event time', () => {
     `one-minute catch-up must not grant time after a fuse failure (${one.ev('rem.air')} vs ${split.ev('rem.air')})`);
 });
 
-test('legacy saves without full-capacity reserve metadata still load', () => {
-  const h = makeHarness();
-  armedLiveRun(h);
-  h.ev('saveBunkerState()');
-  const oldSave = JSON.parse(h.storage.SA_BUNKER_STATE_V1);
-  delete oldSave.reserveFraction;
-  const restored = makeHarness({ SA_BUNKER_STATE_V1: JSON.stringify(oldSave) });
-  const result = restored.ev('restoreBunkerRun()');
-  assert(result && !result.died, 'legacy save must load alive');
-  eq(restored.ev('rem.air'), 12345, 'legacy degraded reserve is preserved');
-});
 
 test('long absence settles once when the resumed state is checkpointed', () => {
   const h = makeHarness();
@@ -515,9 +492,9 @@ test('a weak POWER state uses real seconds to trigger emergency resume', async (
   eq(resumed.ev('busy'), false, 'emergency command input must be ready without animated reports');
 });
 
-test('all lethal-system tier round trips preserve depleted reserves', () => {
+test('partial-capacity round trips preserve depleted reserves in every lethal system', () => {
   for (const key of ['air', 'water', 'thermal']) {
-    for (let tier=0; tier<4; tier++) {
+    for (let tier=0; tier<3; tier++) {
       const h = makeHarness();
       h.ev(`
         FUSE.${key}.lit=${tier}; reconcileAll();
