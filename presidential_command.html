@@ -530,6 +530,9 @@
     ov.querySelector('#btlActions').style.display='flex';
     var st=document.getElementById('btlStatus'); if(st) st.innerHTML='';
     __battleResolved=false;
+    __battleId='';
+    __battleLaunchTs=0;
+    stopResultPolling();
   }
   window.__spLaunch = launchBattle;
 
@@ -543,25 +546,54 @@
   function setBtlStatus(html){ var st=document.getElementById('btlStatus'); if(st) st.innerHTML=html; }
   var __battleLaunchTs=0;      // when the current battle's game was launched (for fresh-result polling)
   var __resultPollIv=null;     // localStorage poll timer
+  var __battleId='';           // correlate both transport paths with the actual launched battle
+  var __parentOrigin=location.origin;
+  try{ if(document.referrer) __parentOrigin=new URL(document.referrer).origin; }catch(e){}
+  /* BATTLE_MESSAGE_SAFETY_START */
+  function escapeBattleWinner(value){
+    if(typeof value!=='string') return '';
+    return value.slice(0,160).replace(/[&<>"']/g,function(c){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+    });
+  }
+  function currentBattleResult(rec,id,launchedAt){
+    return !!(id && launchedAt>0 && rec && typeof rec==='object' &&
+      (rec.result==='win' || rec.result==='loss') &&
+      rec.battleId===id && typeof rec.ts==='number' && isFinite(rec.ts) &&
+      rec.ts>=launchedAt);
+  }
+  function trustedBattleSender(ev,gameWindow,parentWindow,selfWindow,gameOrigin,parentOrigin){
+    if(!ev || !ev.source) return false;
+    if(gameWindow && ev.source===gameWindow){
+      return ev.origin===gameOrigin || ev.origin==='null';
+    }
+    if(parentWindow && parentWindow!==selfWindow && ev.source===parentWindow){
+      return ev.origin===parentOrigin || ev.origin==='null';
+    }
+    return false;
+  }
+  /* BATTLE_MESSAGE_SAFETY_END */
+  function stopResultPolling(){
+    if(__resultPollIv){ clearInterval(__resultPollIv); __resultPollIv=null; }
+  }
   // WIN_DETECT_POLL_V1 (2026-07-21): the published sandbox severs window.opener (COOP), so the game's
   // postMessage can't reach us. But the game and this terminal share the SAME origin, so the game writes
   // its result to localStorage['SA_BATTLE_RESULT'] and we POLL for a result newer than our launch time.
   // This is the reliable auto-detect on the live site; postMessage remains as a fast path when available.
   function startResultPolling(){
-    if(__resultPollIv) { clearInterval(__resultPollIv); __resultPollIv=null; }
+    stopResultPolling();
     __resultPollIv = setInterval(function(){
       if(__battleResolved){ clearInterval(__resultPollIv); __resultPollIv=null; return; }
       var raw=null; try{ raw=localStorage.getItem('SA_BATTLE_RESULT'); }catch(e){ return; }
       if(!raw) return;
       var rec=null; try{ rec=JSON.parse(raw); }catch(e){ return; }
-      if(!rec || (rec.result!=='win' && rec.result!=='loss')) return;
-      if(!rec.ts || rec.ts < __battleLaunchTs) return;   // ignore stale results from earlier battles
+      if(!currentBattleResult(rec,__battleId,__battleLaunchTs)) return;
       if(document.getElementById('battleOverlay').style.display!=='flex') return;
       // fresh, valid result for THIS battle — consume it so it can't double-fire, then resolve.
       try{ localStorage.removeItem('SA_BATTLE_RESULT'); }catch(e){}
       clearInterval(__resultPollIv); __resultPollIv=null;
       var won=(rec.result==='win');
-      setBtlStatus('<span class="'+(won?'wait':'warn')+'">Game reported: <b>'+(won?'YOU WON':'you lost')+'</b>'+(rec.winner?' · winner: '+rec.winner:'')+' — resolving…</span>');
+      setBtlStatus('<span class="'+(won?'wait':'warn')+'">Game reported: <b>'+(won?'YOU WON':'you lost')+'</b>'+(rec.winner?' · winner: '+escapeBattleWinner(rec.winner):'')+' — resolving…</span>');
       try{ if(__gameWin && !__gameWin.closed) __gameWin.close(); }catch(e){}
       window.__spResolve(won);
     }, 500);
@@ -569,10 +601,13 @@
   window.__spPlayItOut=function(){
     // stamp the launch time + clear any old result so we only act on THIS battle's outcome
     __battleLaunchTs = Date.now();
+    __battleId=__battleLaunchTs.toString(36)+'-'+Math.random().toString(36).slice(2);
     try{ localStorage.removeItem('SA_BATTLE_RESULT'); }catch(e){}
     startResultPolling();
     // open the live game in a new window (it blocks iframe embedding, so we can't inline it)
-    __gameWin = window.open(GAME_URL, 'startAgainBattle');
+    var launchURL=new URL(GAME_URL);
+    launchURL.searchParams.set('battleId',__battleId);
+    __gameWin = window.open(launchURL.href, 'startAgainBattle');
     if(!__gameWin){
       setBtlStatus('<span class="warn">Pop-up blocked — please allow pop-ups for this site, then tap PLAY IT OUT again.</span>');
       return;
@@ -583,20 +618,17 @@
       '<div style="font-size:9px;color:var(--ink-faint);margin-top:7px">Auto-detects your win when the game ends. If it doesn\'t register, tap “I WON” to claim the district.</div>');
   };
   // listen for the game reporting its result back to this opener window.
-  // WIN_DETECT_ORIGIN_FIX_V1 (2026-07-21): on the PUBLISHED site this terminal runs in an isolated frame
-  // and the game window's message can arrive with an unexpected origin (e.g. "null" or a sandbox host),
-  // so a strict `ev.origin===GAME_ORIGIN` check silently dropped every win \u2014 the district never updated.
-  // We now validate by the MESSAGE SHAPE instead (type + a real result), which is safe: nothing but our
-  // own game posts {type:'START_AGAIN_RESULT', result:'win'|'loss'}. We still prefer the trusted origin
-  // when it matches, and otherwise accept the well-formed message so wins reliably register.
+  // Accept only the launched game or the direct parent relay, and only a fresh
+  // result for the current battle. Opaque origins still require the exact window.
   window.addEventListener('message', function(ev){
+    if(!trustedBattleSender(ev,__gameWin,window.parent,window,GAME_ORIGIN,__parentOrigin)) return;
     var m=ev && ev.data;
     if(!m || typeof m!=='object' || m.type!=='START_AGAIN_RESULT') return;  // must be our exact message shape
-    if(m.result!=='win' && m.result!=='loss') return;                        // must carry a real result
+    if(!currentBattleResult(m,__battleId,__battleLaunchTs)) return;
     if(document.getElementById('battleOverlay').style.display!=='flex') return; // only while a battle is open
     if(__battleResolved) return;
     var won = (m.result==='win');
-    setBtlStatus('<span class="'+(won?'wait':'warn')+'">Game reported: <b>'+(won?'YOU WON':'you lost')+'</b>'+(m.winner?' · winner: '+m.winner:'')+' — resolving…</span>');
+    setBtlStatus('<span class="'+(won?'wait':'warn')+'">Game reported: <b>'+(won?'YOU WON':'you lost')+'</b>'+(m.winner?' · winner: '+escapeBattleWinner(m.winner):'')+' — resolving…</span>');
     try{ if(__gameWin && !__gameWin.closed) __gameWin.close(); }catch(e){}
     window.__spResolve(won);
   }, false);
@@ -604,6 +636,7 @@
   function resolveBattle(win){
     if(__battleResolved) return;   // resolve a battle exactly once (manual click OR game message)
     __battleResolved=true;
+    stopResultPolling();
     var ov=document.getElementById('battleOverlay');
     var id=ov.getAttribute('data-id');
     if(win){
@@ -620,7 +653,10 @@
     setTimeout(function(){ ov.style.display='none'; renderMap(); if(win){selectDistrict(id);} }, 1400);
   }
   window.__spResolve = resolveBattle;
-  window.__spCloseBattle = function(){ document.getElementById('battleOverlay').style.display='none'; };
+  window.__spCloseBattle = function(){
+    document.getElementById('battleOverlay').style.display='none';
+    stopResultPolling(); __battleId=''; __battleLaunchTs=0;
+  };
 
   // ===== ADVISOR_LIVE_V2 (2026-07-21): the VANCE card opens his real secure-video conversation =====
   // This terminal runs in an ISOLATED iframe of the game. On the PUBLISHED site the iframe is a different

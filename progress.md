@@ -68,3 +68,11 @@ Add checks for repeated post-pause ticks, depletion of a selected source, transi
 - This is not a balance lock or certification of every board-game/district/World Ring interaction.
 - Browser-local saves are not cloud or cross-device saves.
 - Production publication, remote branch upload, and production verification remain gated on approval.
+
+## Security follow-up
+
+- Pre-publish review found a pre-existing cross-window result injection/spoofing path.
+- Added expected-window/origin checks, per-launch battle IDs, fresh timestamps, escaped winner labels, and command-frame-only advisor messages.
+- Added eight executable message-safety checks.
+- Browser tests rejected unrelated senders and stale IDs, displayed attack markup as text without creating an image/SVG, and preserved valid popup, storage-poll, parent-relay, and advisor flows.
+- Local developer/game-state controls remain intentionally available for single-player playtesting and are not an authentication boundary.
