@@ -14,8 +14,11 @@ This candidate is based on `aeadb08`, the existing isolated integrity patch imme
 - Mobile controls: the prompt wraps above a visible, 44px-high input instead of pushing the field off-screen.
 - Death screen: the title and acknowledgement stay visible; only the long letter scrolls.
 - Reporting: short offline drift is shown in seconds instead of `0m`.
+- Battle-result safety: only the launched game or direct parent relay can submit a fresh result for the current battle. Winner labels are escaped on message and storage paths; advisor intents must come from the command frame.
 
 These are correctness and usability fixes, not a balance lock. Fuse tiers, POWER multipliers, decay intervals, sabotage intervals, the rest concession, and the 30-second action allowance are unchanged.
+
+The message hardening is the only additional non-bunker code change. The pre-publish review identified the older handler as an injection/spoofing risk, so the release closes that issue without changing battle outcomes, rewards, or rules.
 
 ## Repeatable checks
 
@@ -38,6 +41,8 @@ Saves remain local to the browser/device. No cloud account, cross-device save, a
 The release check covers fresh terminal entry, AZTEC gate, defense resolution, opening assault, rescue moves, the 4/4 round trip, extended MOVE, AIM changes, offline resume, emergency resume, death/reload, and desktop/mobile control bounds.
 
 The district/World Ring and board-game systems are unchanged. Parsing those scripts and checking initial rendering is not a full balance or multiplayer certification.
+
+Focused message checks additionally verify that unrelated senders and stale battle IDs are rejected, markup is displayed as text, and valid popup, local-storage, and parent-relay results still resolve. Public local playtesting controls remain intentionally available; this is not an anti-cheat or authenticated multiplayer release.
 
 ## Release gate
 

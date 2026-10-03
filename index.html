@@ -5256,12 +5256,14 @@ function __reportBattleResult(){
   // launched this game. On the PUBLISHED site the terminal runs isolated, so we (a) post to BOTH the
   // opener AND the parent (whichever is the real launcher), and (b) RE-POST a few times, because the
   // win can be declared before the receiver's listener is settled and a single post can be missed.
-  // The receiver validates by message shape, so extra/duplicate posts are harmless (it resolves once).
+  // The receiver validates sender, battle ID, and timestamp, then resolves only once.
   try{
     var human=(G.players||[]).find(function(p){ return p && !p.isAI; });
     var didIWin=!!(human && G.winnerName===human.name);
     var payload={
       type:'START_AGAIN_RESULT',
+      battleId: new URLSearchParams(window.location.search).get('battleId') || null,
+      ts: Date.now(),
       result: didIWin ? 'win' : 'loss',
       winner: G.winnerName||null,
       reason: G.winReason||null
@@ -5281,7 +5283,7 @@ function __reportBattleResult(){
     //     even though the published sandbox severs window.opener (COOP). Timestamped so the terminal only
     //     acts on a FRESH result, never a stale one from a previous battle.
     try{
-      var rec = JSON.stringify({ result:payload.result, winner:payload.winner, reason:payload.reason, ts:Date.now() });
+      var rec = JSON.stringify(payload);
       localStorage.setItem('SA_BATTLE_RESULT', rec);
     }catch(e){}
   }catch(e){}
@@ -29192,6 +29194,11 @@ var SA_TUT_AVATARS = {
     if(!window.__saAdvisorBridge){
       window.__saAdvisorBridge = true;
       window.addEventListener("message", function(ev){
+        var commandFrame=document.getElementById("saCommandFrame");
+        if(!commandFrame || ev.source!==commandFrame.contentWindow) return;
+        var expectedOrigin;
+        try{ expectedOrigin=new URL(commandFrame.src,location.href).origin; }catch(e){ return; }
+        if(ev.origin!==expectedOrigin && ev.origin!=="null") return;
         var m=ev && ev.data; if(!m || typeof m!=="object") return;
         if(m.type==="SA_OPEN_VANCE"){
           try{ if(window.saVanceDialogue && typeof window.saVanceDialogue.open==="function") window.saVanceDialogue.open(null, true); }catch(e){}
@@ -29232,7 +29239,7 @@ var SA_TUT_AVATARS = {
         __saLastWinTs = rec.ts;
         // clear the key so it can't be re-read, then forward into the terminal iframe.
         try{ localStorage.removeItem("SA_BATTLE_RESULT"); }catch(e){}
-        try{ frame.contentWindow.postMessage({ type:"START_AGAIN_RESULT", result:rec.result, winner:rec.winner||null, reason:rec.reason||null }, "*"); }catch(e){}
+        try{ frame.contentWindow.postMessage({ type:"START_AGAIN_RESULT", battleId:rec.battleId, ts:rec.ts, result:rec.result, winner:rec.winner||null, reason:rec.reason||null }, "*"); }catch(e){}
       }, 600);
     }
     // SP_TERMINAL_V1 (v8.43): the war-room button opens the secret CRT boot terminal

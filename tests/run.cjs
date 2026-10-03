@@ -16,7 +16,7 @@ for (const file of ['index.html', 'presidential_command.html']) {
 }
 console.log(`[PASS] ${scripts} inline scripts parse in both game entry points`);
 
-const suites = ['bunker_integrity.cjs', 'local_economy_v1.cjs', 'home_node_v1.cjs'];
+const suites = ['bunker_integrity.cjs', 'battle_result_security.cjs', 'local_economy_v1.cjs', 'home_node_v1.cjs'];
 let ran = 0;
 for (const suite of suites) {
   const file = path.join(__dirname, suite);
