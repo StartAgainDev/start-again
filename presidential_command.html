@@ -548,9 +548,15 @@
   var __battleLaunchTs=0;      // when the current battle's game was launched (for fresh-result polling)
   var __resultPollIv=null;     // localStorage poll timer
   var __battleId='';           // correlate both transport paths with the actual launched battle
-  var __parentOrigin=location.origin;
-  try{ if(document.referrer) __parentOrigin=new URL(document.referrer).origin; }catch(e){}
   /* BATTLE_MESSAGE_SAFETY_START */
+  // HOST_FRAME_POLICY_V1 (2026-10-03): the game renders this panel through srcdoc, where
+  // location.origin reads "null" although the document keeps the game's real origin.
+  // Prefer the referrer, then the document's own origin, then location.
+  function resolveParentOrigin(locationOrigin, documentOrigin, referrer){
+    if(referrer){ try{ return new URL(referrer).origin; }catch(e){} }
+    if(typeof documentOrigin==='string' && documentOrigin && documentOrigin!=='null') return documentOrigin;
+    return locationOrigin;
+  }
   function escapeBattleWinner(value){
     if(typeof value!=='string') return '';
     return value.slice(0,160).replace(/[&<>"']/g,function(c){
@@ -574,6 +580,7 @@
     return false;
   }
   /* BATTLE_MESSAGE_SAFETY_END */
+  var __parentOrigin=resolveParentOrigin(location.origin, window.origin, document.referrer);
   function stopResultPolling(){
     if(__resultPollIv){ clearInterval(__resultPollIv); __resultPollIv=null; }
   }

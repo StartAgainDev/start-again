@@ -29164,6 +29164,32 @@ var SA_TUT_AVATARS = {
     // Command hand-off: after arrival, open the Presidential Command terminal full-screen
     // (isolated iframe). This closes the USA single-player loop.
     var SA_COMMAND_SRC = { USA:"presidential_command.html" };
+    /* COMMAND_PANEL_LOADER_START */
+    /* HOST_FRAME_POLICY_V1 (2026-10-03): the live host sends X-Frame-Options: DENY and
+       frame-ancestors 'none' on every page, so loading the panel into this frame BY URL is
+       blocked and Single Player showed an empty error frame. Fetch the panel from our own
+       origin and render it through srcdoc, which is not a framed navigation and keeps the
+       panel same-origin with the game. If fetching is unavailable (e.g. the file was opened
+       from disk), fall back to src, which still works wherever same-origin framing is allowed. */
+    function saLoadCommandPanel(frame, src){
+      if(!frame || !src || frame.getAttribute("data-command-src")===src) return;
+      frame.setAttribute("data-command-src", src);
+      function bySrc(){
+        if(frame.getAttribute("data-command-src")!==src) return;
+        frame.removeAttribute("srcdoc");
+        if(frame.getAttribute("src")!==src) frame.setAttribute("src", src);
+      }
+      if(typeof fetch!=="function" || location.protocol==="file:"){ bySrc(); return; }
+      fetch(src, {cache:"no-cache", credentials:"same-origin"}).then(function(r){
+        if(!r.ok) throw new Error("panel HTTP "+r.status);
+        return r.text();
+      }).then(function(html){
+        if(frame.getAttribute("data-command-src")!==src) return;
+        frame.removeAttribute("src");
+        frame.srcdoc=html;
+      }).catch(bySrc);
+    }
+    /* COMMAND_PANEL_LOADER_END */
     if(typeof window.saEnterCommand!=="function"){
       window.saEnterCommand = function(id){
         // dismiss the earlier menus underneath
@@ -29174,7 +29200,7 @@ var SA_TUT_AVATARS = {
         var src=SA_COMMAND_SRC[id] || SA_COMMAND_SRC.USA;
         if(!host||!frame){ return; }
         // load the panel only when needed; reuse the frame if already loaded
-        if(frame.getAttribute("src")!==src){ frame.setAttribute("src", src); }
+        saLoadCommandPanel(frame, src);
         host.classList.remove("sa-command-hidden");
         host.classList.add("sa-command-fade"); void host.offsetWidth; host.classList.remove("sa-command-fade");
       };
@@ -29197,7 +29223,8 @@ var SA_TUT_AVATARS = {
         var commandFrame=document.getElementById("saCommandFrame");
         if(!commandFrame || ev.source!==commandFrame.contentWindow) return;
         var expectedOrigin;
-        try{ expectedOrigin=new URL(commandFrame.src,location.href).origin; }catch(e){ return; }
+        var commandSrc=commandFrame.getAttribute("data-command-src") || commandFrame.getAttribute("src") || "";
+        try{ expectedOrigin=new URL(commandSrc,location.href).origin; }catch(e){ return; }
         if(ev.origin!==expectedOrigin && ev.origin!=="null") return;
         var m=ev && ev.data; if(!m || typeof m!=="object") return;
         if(m.type==="START_AGAIN_BATTLE_LAUNCHED"){
@@ -29252,7 +29279,7 @@ var SA_TUT_AVATARS = {
         if(rec.battleId!==active.id || typeof rec.ts!=="number" || !isFinite(rec.ts) || rec.ts<active.ts) return;
         if(rec.ts<=__saLastWinTs) return;             // already forwarded this one
         var frame=document.getElementById("saCommandFrame");
-        if(!frame || !frame.getAttribute("src") || !frame.contentWindow) return;
+        if(!frame || !(frame.getAttribute("data-command-src") || frame.getAttribute("src")) || !frame.contentWindow) return;
         __saLastWinTs = rec.ts;
         // clear the key so it can't be re-read, then forward into the terminal iframe.
         try{ localStorage.removeItem(resultKey); }catch(e){}
