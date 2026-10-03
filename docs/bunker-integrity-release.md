@@ -34,7 +34,7 @@ An earlier draft of this release used no refill. It was withdrawn before deploym
 
 ## Known pre-existing issues (not changed here)
 
-- The host sends `X-Frame-Options: DENY` and `frame-ancestors 'none'` for every page, including `presidential_command.html`. The game therefore cannot embed its own Presidential Command panel on the live site, and Chromium blocks the frame. The live August build has the same problem.
+- The host sends `X-Frame-Options: DENY` and `frame-ancestors 'none'` for every page, including `presidential_command.html`, so the game could not embed its own Presidential Command panel by URL. The command-panel release fixes this by rendering the panel through `srcdoc`; see `docs/command-panel-embedding.md`.
 - Choosing the Single Player door does not stop bunker clocks that are already running, for example after the opening assault, although that door is meant to have no survival timer.
 
 ## Repeatable checks
