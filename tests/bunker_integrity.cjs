@@ -370,6 +370,218 @@ test('emergency resume reaches an actionable input before AIR runs out', async (
   assert(promptAt < 5, `input opened too slowly (${promptAt}s); emergency resume must be near-instant`);
 });
 
+// ---------- release regression probes (2026-10-03) ----------------------
+
+test('consecutive post-pause ticks bill each elapsed second only once', () => {
+  const h = makeHarness();
+  h.ev(`
+    openingApplied=true; termActive=true; bunkerLive=true;
+    FUSE.water.lit=3; FUSE.comms.lit=0;
+    reconcileAll(); armClocks(); onFuse("M");
+  `);
+  const before = h.ev('rem.water');
+  for (let i=0; i<80; i++) {
+    h.advance(500);
+    h.ev('clockStep()');
+  }
+  const charged = before - h.ev('rem.water');
+  assert(Math.abs(charged - 10) < 0.01,
+    `40 seconds with a 30-second pause must drain 10 seconds, not ${charged}`);
+});
+
+test('a selected source that loses its last fuse cannot create a negative fuse', () => {
+  const h = makeHarness();
+  h.ev(`
+    openingApplied=true; termActive=true; bunkerLive=true;
+    FUSE.air.lit=1; FUSE.water.lit=3;
+    reconcileAll();
+    moveFrom=2;
+    baselineBlowOne();
+    onFuseTo("4");
+  `);
+  eq(h.ev('FUSE.air.lit'), 0, 'depleted source must stay at zero');
+  eq(h.ev('FUSE.water.lit'), 3, 'destination must not receive a nonexistent fuse');
+});
+
+test('a move without a valid source is refused without throwing', () => {
+  const h = makeHarness();
+  h.ev('openingApplied=true; FUSE.air.lit=3; reconcileAll(); moveFrom=-1;');
+  h.ev('onFuseTo("2")');
+  eq(h.ev('FUSE.air.lit'), 3, 'invalid source must not mutate destination');
+});
+
+test('AIR 3-to-4-to-3 round trip preserves its remaining reserve', () => {
+  const h = makeHarness();
+  h.ev(`
+    openingApplied=true; termActive=true; bunkerLive=true;
+    FUSE.air.lit=3; reconcileAll(); rem.air=100;
+    moveFrom=4; onFuseTo("2");
+  `);
+  eq(h.ev('FUSE.air.lit'), 4, 'AIR restored to full');
+  eq(h.ev('rem.air'), null, 'full capacity remains safe');
+  h.ev('moveFrom=2; onFuseTo("4");');
+  assert(Math.abs(h.ev('rem.air') - 100) < 0.01,
+    `full-capacity round trip must retain 100 seconds, got ${h.ev('rem.air')}`);
+});
+
+test('reserve at full capacity survives reload without granting free time', () => {
+  const h = makeHarness();
+  h.ev(`
+    openingApplied=true; termActive=true; bunkerLive=true;
+    FUSE.air.lit=3; reconcileAll(); rem.air=100;
+    moveFrom=4; onFuseTo("2"); saveBunkerState();
+  `);
+  const restored = makeHarness({ ...h.storage });
+  restored.ev('restoreBunkerRun(); moveFrom=2; onFuseTo("4");');
+  assert(Math.abs(restored.ev('rem.air') - 100) < 0.01,
+    `reload at 4/4 must retain reserve, got ${restored.ev('rem.air')}`);
+});
+
+test('24-hour resume applies the rest rate before the full-speed rate', () => {
+  const h = makeHarness();
+  h.ev(`
+    openingApplied=true; termActive=true; bunkerLive=true;
+    reconcileAll(); armClocks();
+    baselineAccum=BASELINE_SECS-6*3600;
+    saveBunkerState();
+  `);
+  const resumed = makeHarness({ ...h.storage });
+  resumed.setNow(h.now()+24*3600*1000);
+  const result = resumed.ev('restoreBunkerRun()');
+  assert(!result.died, 'reference absence must survive');
+
+  const chronological = makeHarness({ ...h.storage });
+  chronological.ev(`
+    restoreBunkerRun();
+    advanceBy(12*3600*OFFLINE_REST_RATE, false, 12*3600);
+    advanceBy(12*3600*OFFLINE_FULL_RATE, false, 12*3600);
+  `);
+  const expected = chronological.ev('rem.air');
+  const actual = resumed.ev('rem.air');
+  assert(Math.abs(actual-expected) < 0.01,
+    `resume must preserve early rest then full-rate chronology: expected ${expected}, got ${actual}`);
+});
+
+test('a fuse failure inside a minute applies at its actual event time', () => {
+  const one = makeHarness(), split = makeHarness();
+  const setup = `
+    openingApplied=true; termActive=true; bunkerLive=true;
+    reconcileAll(); armClocks();
+    baselineAccum=BASELINE_SECS-10;
+  `;
+  one.ev(setup); split.ev(setup);
+  one.ev('advanceBy(60, false, 60)');
+  split.ev('advanceBy(10, false, 10); advanceBy(50, false, 50)');
+  assert(Math.abs(one.ev('rem.air')-split.ev('rem.air')) < 0.01,
+    `one-minute catch-up must not grant time after a fuse failure (${one.ev('rem.air')} vs ${split.ev('rem.air')})`);
+});
+
+test('legacy saves without full-capacity reserve metadata still load', () => {
+  const h = makeHarness();
+  armedLiveRun(h);
+  h.ev('saveBunkerState()');
+  const oldSave = JSON.parse(h.storage.SA_BUNKER_STATE_V1);
+  delete oldSave.reserveFraction;
+  const restored = makeHarness({ SA_BUNKER_STATE_V1: JSON.stringify(oldSave) });
+  const result = restored.ev('restoreBunkerRun()');
+  assert(result && !result.died, 'legacy save must load alive');
+  eq(restored.ev('rem.air'), 12345, 'legacy degraded reserve is preserved');
+});
+
+test('long absence settles once when the resumed state is checkpointed', () => {
+  const h = makeHarness();
+  armedLiveRun(h);
+  h.ev('saveBunkerState()');
+  const resumed = makeHarness({ ...h.storage });
+  resumed.setNow(h.now()+60_000);
+  resumed.ev('restoreBunkerRun(); saveBunkerState();');
+  const once = resumed.ev('rem.air');
+  resumed.ev('restoreBunkerRun()');
+  eq(resumed.ev('rem.air'), once, 'a second resume must not charge the same absence');
+  assert(Math.abs(12345-once-21) < 0.01, 'one minute away charges 21 life-support seconds');
+});
+
+test('a weak POWER state uses real seconds to trigger emergency resume', async () => {
+  const h = makeHarness();
+  h.ev(`
+    openingApplied=true; termActive=true; bunkerLive=true;
+    FUSE.air.lit=3; FUSE.power.lit=0; reconcileAll(); rem.air=100;
+    bunkerUnlocked=true; saveBunkerState();
+  `);
+  const resumed = makeHarness({ ...h.storage });
+  resumed.ev('resumeRun()');
+  for (let i=0; i<100; i++) await Promise.resolve();
+  eq(resumed.ev('mode'), 'fuse', '20 real seconds at POWER x5 must take the emergency path');
+  eq(resumed.ev('busy'), false, 'emergency command input must be ready without animated reports');
+});
+
+test('all lethal-system tier round trips preserve depleted reserves', () => {
+  for (const key of ['air', 'water', 'thermal']) {
+    for (let tier=0; tier<4; tier++) {
+      const h = makeHarness();
+      h.ev(`
+        FUSE.${key}.lit=${tier}; reconcileAll();
+        rem.${key}=CLOCK_MIN.${key}[${tier}]*0.27;
+      `);
+      const before = h.ev(`rem.${key}`);
+      h.ev(`FUSE.${key}.lit=${tier+1}; reconcileClock("${key}");
+            FUSE.${key}.lit=${tier}; reconcileClock("${key}");`);
+      assert(Math.abs(h.ev(`rem.${key}`)-before) < 0.00001,
+        `${key} ${tier}->${tier+1}->${tier} must preserve its reserve`);
+    }
+  }
+});
+
+test('invalid elapsed-time inputs cannot mutate or hang the engine', () => {
+  const h = makeHarness();
+  armedLiveRun(h);
+  const before = snapshot(h);
+  h.ev('advanceBy(Infinity,false); advanceBy(NaN,false); advanceBy(-1,false);');
+  eq(JSON.stringify(snapshot(h)), JSON.stringify(before), 'invalid elapsed input must be a no-op');
+});
+
+test('disconnect after the assault preserves the run before any door is chosen', () => {
+  const h = makeHarness();
+  armedLiveRun(h);
+  h.ev('bunkerLive=false; window.saDoorChosen=null; saveBunkerState();');
+  const before = snapshot(h);
+  h.ev('close()');
+  h.fire('pagehide');
+  const saved = JSON.parse(h.storage.SA_BUNKER_STATE_V1);
+  eq(saved.rem.air, before.rem.air, 'pre-door disconnect must retain AIR reserve');
+  eq(saved.base, before.base, 'pre-door disconnect must retain decay progress');
+});
+
+test('assassination clears an already-started bunker run immediately', () => {
+  const h = makeHarness();
+  armedLiveRun(h);
+  h.ev('saveBunkerState(); huntArmed=true; huntResolved=false; assassinationDeath();');
+  h.fire('pagehide');
+  assert(!h.storage.SA_BUNKER_STATE_V1, 'assassinated run must never be resumable');
+  eq(h.ev('deadRun'), true, 'assassination latches death');
+  eq(h.ev('clocksArmed'), false, 'assassination stops the survival engine');
+});
+
+test('password lockout clears the save before the death animation', () => {
+  const h = makeHarness();
+  armedLiveRun(h);
+  h.ev('saveBunkerState(); fails=3; denied();');
+  h.fire('beforeunload');
+  assert(!h.storage.SA_BUNKER_STATE_V1, 'lockout must not be undone by reloading mid-animation');
+  eq(h.ev('deadRun'), true, 'password lockout latches death');
+});
+
+test('short offline reports display seconds instead of zero minutes', () => {
+  const h = makeHarness();
+  eq(h.ev('fmtAway(21)'), '21s', 'short drift must be visible');
+});
+
+test('public hosts do not expose local terminal inspection hooks', () => {
+  const h = makeHarness(); // example.test, not localhost
+  eq(h.ev('typeof window.__saFuse'), 'undefined', 'mutable inspection hook is local-only');
+  eq(h.ev('typeof window.render_game_to_text'), 'undefined', 'QA text hook is local-only');
+});
+
 // ---------- summary -----------------------------------------------------
 
 (async () => {
