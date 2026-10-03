@@ -163,6 +163,7 @@ test('sleep freezes DEFENSE sabotage but NOT baseline decay or life-support', ()
   const beforeBase = h.ev('baselineAccum');
 
   // Simulate the full sleep duration.
+  h.advance(dur * 1000); // the replay interval ends at the current wall-clock time
   h.ev(`advanceBy(${dur}, false, ${dur})`);
 
   const afterAir  = h.ev('rem.air');
@@ -308,6 +309,72 @@ test('death clears sleep state (dead-run latch)', () => {
   `);
   eq(h.ev('HOME.isAsleep()'), false, 'sleep must be cleared on death');
   assert(!h.storage.SA_BUNKER_STATE_V1, 'save must be cleared');
+});
+
+// ---------- historical sleep replay -----------------------------------
+
+function sleepingRun() {
+  const h = makeHarness();
+  h.ev(`
+    openingApplied=true; termActive=true; bunkerLive=true;
+    FUSE.defense.lit=3;
+    BASELINE_SECS=0; // isolate hostile-time accounting from random fuse losses
+    reconcileAll(); armClocks();
+    ECON.inventory.heldByPlayer=3;
+    ECON.inventory.availableStock-=3;
+    HOME.start(8*3600);
+    saveBunkerState();
+  `);
+  return h;
+}
+
+test('24-hour absence preserves all eight hours of paid sleep protection', () => {
+  const h = sleepingRun();
+  h.advance(24*3600*1000);
+  h.ev('restoreBunkerRun()');
+  eq(h.ev('sabotageAccum'), 16*3600, 'only the 16 awake hours are hostile time');
+  eq(h.ev('HOME.isAsleep()'), false, 'sleep has ended');
+  eq(h.ev('ECON.inventory.heldByPlayer'), 1, 'natural wake does not refund spent fuses');
+});
+
+test('sleep protection remains correct across repeated partial resumes', () => {
+  const h = sleepingRun();
+  h.advance(4*3600*1000);
+  h.ev('restoreBunkerRun(); saveBunkerState();');
+  eq(h.ev('sabotageAccum'), 0, 'first four hours are protected');
+  eq(h.ev('HOME.sleepRemaining()'), 4*3600, 'four hours remain');
+  h.advance(6*3600*1000);
+  h.ev('restoreBunkerRun()');
+  eq(h.ev('sabotageAccum'), 2*3600, 'only the final two hours are hostile');
+});
+
+test('sleep expiry inside a replay step protects only the sleeping portion', () => {
+  const h = sleepingRun();
+  h.advance((8*3600-10)*1000);
+  h.ev('advanceBy(8*3600-10,false,8*3600-10)');
+  eq(h.ev('sabotageAccum'), 0, 'pre-expiry interval is protected');
+  h.advance(60*1000);
+  h.ev('advanceBy(60,false,60)');
+  eq(h.ev('sabotageAccum'), 50, '10 sleeping seconds then 50 hostile seconds');
+});
+
+test('sleep entry uses real remaining time under weak POWER', () => {
+  const h = makeHarness();
+  h.ev(`
+    openingApplied=true; termActive=true;
+    FUSE.air.lit=3; FUSE.power.lit=0; reconcileAll(); rem.air=100;
+    ECON.inventory.heldByPlayer=3; ECON.inventory.availableStock-=3;
+  `);
+  eq(h.ev('HOME.start(15*60)'), false, '20 real seconds is a crisis, despite 100 budget seconds');
+  eq(h.ev('ECON.inventory.heldByPlayer'), 3, 'refused sleep does not spend a fuse');
+});
+
+test('sleep freezes existing sabotage progress instead of erasing it', () => {
+  const h = sleepingRun();
+  h.ev('sabotageAccum=321');
+  h.advance(60*1000);
+  h.ev('advanceBy(60,false,60)');
+  eq(h.ev('sabotageAccum'), 321, 'paid sleep pauses, rather than forgives, accrued hostile time');
 });
 
 // ---------- static: HOME cannot cross tier boundaries ------------------

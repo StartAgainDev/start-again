@@ -31111,18 +31111,26 @@ var SA_TUT_AVATARS = {
      kills the player hour-by-hour. Step at actual fuse-failure and death boundaries
      (at most one minute per step), so each new tier applies for the correct duration. */
   var ADVANCE_SLICE_S = 60;  // one minute; fine-grained enough that tier changes register nearly-continuously
-  function advanceBy(dtReal, live, fullDt){
+  function advanceBy(dtReal, live, fullDt, fromTs){
     if(fullDt==null) fullDt=dtReal;
     if(!isFinite(dtReal) || !isFinite(fullDt) || dtReal<0 || fullDt<0) return null;
+    // Replay against the historical wall clock, not Date.now() at the end of
+    // an absence. Home's protection must expire at its real boundary in the replay.
+    var cursorTs=(typeof fromTs==="number")?fromTs:Date.now()-fullDt*1000;
     var span=Math.max(dtReal,fullDt);
-    if(span===0) return _advanceOne(0,live,0);
+    if(span===0) return _advanceOne(0,live,0,cursorTs);
     var lifeRate=dtReal/span, wallRate=fullDt/span;
     var left=span, died=null;
     while(left>0 && !died){
       var step=Math.min(left,ADVANCE_SLICE_S);
       if(wallRate>0){
         var sabInt=sabotageInterval();
-        if(sabInt!==null) step=Math.min(step,Math.max(0,sabInt-sabotageAccum)/wallRate);
+        var sleeping=(typeof HOME!=="undefined") && HOME.isAsleep();
+        if(sleeping){
+          step=Math.min(step,Math.max(0,HOME._sleepEndsAt()-cursorTs)/1000/wallRate);
+        } else if(sabInt!==null){
+          step=Math.min(step,Math.max(0,sabInt-sabotageAccum)/wallRate);
+        }
         if(BASELINE_SECS>0) step=Math.min(step,Math.max(0,BASELINE_SECS-baselineAccum)/wallRate);
       }
       if(lifeRate>0){
@@ -31135,12 +31143,13 @@ var SA_TUT_AVATARS = {
       }
       // Tiny rounding residuals must not stall the event loop.
       step=Math.min(left,Math.max(step,0.0000001));
-      died=_advanceOne(step*lifeRate,live,step*wallRate);
+      died=_advanceOne(step*lifeRate,live,step*wallRate,cursorTs);
+      cursorTs+=step*wallRate*1000;
       left=Math.max(0,left-step);
     }
     return died;
   }
-  function _advanceOne(dtReal, live, fullDt){
+  function _advanceOne(dtReal, live, fullDt, fromTs){
     if(FUSE.defense.lit===0) return "defense";
     var mult=powerMult();
     // Convert elapsed REAL seconds -> spec-minutes drained, scaled by POWER (weak power drains faster).
@@ -31162,9 +31171,9 @@ var SA_TUT_AVATARS = {
     // HOME_NODE_V1: sleeping at Home freezes hostile timers ONLY. Baseline decay and
     // life-support drain (above) are NOT frozen \u2014 sabotage is the only clock rest silences.
     var sabInt = sabotageInterval();
-    var _asleep = (typeof HOME !== "undefined") && HOME.isAsleep();
-    if(sabInt!==null && !_asleep){
-      sabotageAccum += fullDt;   // HOSTILE: full rate, always
+    var hostileDt=(typeof HOME!=="undefined")?HOME._hostileSeconds(fromTs,fullDt):fullDt;
+    if(sabInt!==null && hostileDt>0){
+      sabotageAccum += hostileDt; // only the historically awake portion is hostile
       var blows=0;
       while(sabotageAccum >= sabInt && blows<20){ sabotageAccum -= sabInt; blows++; }
       if(blows>0){
@@ -31174,7 +31183,7 @@ var SA_TUT_AVATARS = {
           for(var j=0;j<LETHAL.length;j++){ if(FUSE[LETHAL[j]].lit===0 && rem[LETHAL[j]]!==null && rem[LETHAL[j]]<=0){ died=LETHAL[j]; break; } }
         }
       }
-    } else {
+    } else if(sabInt===null) {
       sabotageAccum = 0; // SECURE -> reset the bank so re-degrading starts fresh
     }
     // ---- BASELINE DECAY: a random fuse blows by itself on a steady interval (always on).
@@ -31189,13 +31198,6 @@ var SA_TUT_AVATARS = {
     }
     // Instant-death: DEFENSE at 0 fuses = immediate breach.
     if(FUSE.defense.lit===0 && !died) died="defense";
-    // HOME_NODE_V1: auto-wake the moment the sleep window elapses. Any drain that
-    // just accrued has already been billed above, so this is a clean transition.
-    try{
-      if(typeof HOME !== "undefined" && HOME.isAsleep() && HOME.sleepRemaining() <= 0){
-        HOME.wake();
-      }
-    }catch(e){}
     return died;
   }
   // TRUE in-place refresh: rewrite ONLY the 6 captured system rows' text/colour every tick.
@@ -31522,7 +31524,7 @@ var SA_TUT_AVATARS = {
       for(var i=0;i<LETHAL.length;i++){
         var k = LETHAL[i];
         if(FUSE[k].lit === 0) return true;
-        if(rem[k] !== null && rem[k] < HOME_ENTRY_GATE_S) return true;
+        if(rem[k] !== null && rem[k]*TIME_SCALE/powerMult() < HOME_ENTRY_GATE_S) return true;
       }
       return false;
     }
@@ -31554,11 +31556,11 @@ var SA_TUT_AVATARS = {
 
       // Wake up. Auto-called by advanceBy() when the duration has elapsed. Manual
       // wake before the duration is an EARLY RETURN and receives a partial refund.
-      wake: function(){
+      wake: function(natural){
         if(!state.asleep) return false;
         var elapsedS = (Date.now() - state.startedAt) / 1000;
         var wasEarly = elapsedS < state.durationS;
-        if(wasEarly && state.spentCost > 0){
+        if(!natural && wasEarly && state.spentCost > 0){
           var refund = Math.floor(state.spentCost * HOME_EARLY_RETURN_REFUND);
           if(refund > 0){
             // Refund goes back to heldByPlayer (returned to the shared pool via 'destroyed' rollback).
@@ -31575,6 +31577,15 @@ var SA_TUT_AVATARS = {
         if(!state.asleep) return 0;
         var elapsedS = (Date.now() - state.startedAt) / 1000;
         return Math.max(0, state.durationS - elapsedS);
+      },
+      _sleepEndsAt: function(){ return state.startedAt+state.durationS*1000; },
+      _hostileSeconds: function(fromTs, seconds){
+        if(!state.asleep) return seconds;
+        var until=state.startedAt+state.durationS*1000;
+        var end=fromTs+seconds*1000;
+        var protectedS=Math.max(0,Math.min(end,until)-Math.max(fromTs,state.startedAt))/1000;
+        if(end>=until) this.wake(true); // a completed sleep never receives an early refund
+        return Math.max(0,seconds-protectedS);
       },
 
       // Persistence.
@@ -31614,8 +31625,9 @@ var SA_TUT_AVATARS = {
     // failing at hour 6 must experience the rest rate until hour 12, then full rate.
     var rest=Math.min(gapS,OFFLINE_REST_WINDOW_S);
     var full=Math.max(0,gapS-rest);
-    var died=advanceBy(rest*OFFLINE_REST_RATE,false,rest);
-    if(!died && full>0) died=advanceBy(full*OFFLINE_FULL_RATE,false,full);
+    var fromTs=Date.now()-gapS*1000;
+    var died=advanceBy(rest*OFFLINE_REST_RATE,false,rest,fromTs);
+    if(!died && full>0) died=advanceBy(full*OFFLINE_FULL_RATE,false,full,fromTs+rest*1000);
     return died;
   }
   function fmtAway(s){
