@@ -30846,31 +30846,24 @@ var SA_TUT_AVATARS = {
   //    and if back to 4/4 -> clear the clock (system safe again).
   // Track each system's last-seen fuse count so reconcile knows if a fuse was ADDED or LOST.
   var lastLit = {air:4, water:4, thermal:4, defense:4};
-  // Full capacity stops drain; it must not erase the reserve already spent.
-  // Keep the reserve fraction while at 4/4, including across save/reload.
-  var reserveFraction = {air:1, water:1, thermal:1};
+  /* FULL_CAPACITY_RULE (open design decision, 2026-10-03): reaching 4/4 clears the
+     countdown, so a later loss starts that tier's full budget. A spare fuse cycled
+     through 4/4 can therefore refill a depleted reserve. Whether full capacity should
+     refill instantly (the current rule), gradually, or not at all is a balance call,
+     so the integrity hotfix deliberately leaves it unchanged. */
   function reconcileClock(key){
     var b=budgetFor(key);              // budget (spec-min) at the CURRENT fuse level; null at 4/4
     var nowLit=FUSE[key].lit, was=lastLit[key];
-    var oldB = CLOCK_MIN[key][was];
     lastLit[key]=nowLit;
-    if(b===null){
-      if(rem[key]!==null && oldB>0){
-        reserveFraction[key]=Math.max(0,Math.min(1,rem[key]/oldB));
-      }
-      rem[key]=null; return;   // safe at 4/4, but the reserve is not refilled
-    }
-    if(rem[key]===null){
-      var fraction=reserveFraction[key];
-      if(typeof fraction!=="number" || !isFinite(fraction)) fraction=1;
-      rem[key]=b*Math.max(0,Math.min(1,fraction)); return;
-    }
+    if(b===null){ rem[key]=null; return; }   // back to 4/4 -> system safe, clock cleared
+    if(rem[key]===null){ rem[key]=b; return; }   // clock just born -> full tier budget
     // FUSE_MOVE_NO_FREE_TIME_V1 (2026-09-07): a fuse change preserves the same FRACTION of
     // the tier's budget. Prior behaviour credited backdated survival time on additions,
     // so moving a fuse away and back inflated AIR from 100s to 86500s in two clicks. The
     // proportional rule is exactly reversible (A\u2192B\u2192A is a no-op) and still lets a real
     // fuse addition feel meaningful: 50% of the old tier becomes 50% of the new one, so
     // absolute headroom grows without any second being backdated.
+    var oldB = CLOCK_MIN[key][was];
     if(oldB && oldB > 0){
       rem[key] = Math.min(b, rem[key] * (b / oldB));
     } else {
@@ -31067,7 +31060,6 @@ var SA_TUT_AVATARS = {
     rem={air:null, water:null, thermal:null, defense:null};
     critBeeped={air:false, water:false, thermal:false, defense:false};
     lastLit={air:4, water:4, thermal:4, defense:4};
-    reserveFraction={air:1, water:1, thermal:1};
     sabotageAccum=0;
     baselineAccum=0;
     actionPause=false;
@@ -31605,6 +31597,7 @@ var SA_TUT_AVATARS = {
       _sleepEndsAt: function(){ return state.startedAt+state.durationS*1000; },
       _hostileSeconds: function(fromTs, seconds){
         if(!state.asleep) return seconds;
+        if(typeof fromTs!=="number" || !isFinite(fromTs)) fromTs=Date.now()-seconds*1000;
         var until=state.startedAt+state.durationS*1000;
         var end=fromTs+seconds*1000;
         var protectedS=Math.max(0,Math.min(end,until)-Math.max(fromTs,state.startedAt))/1000;
@@ -31675,7 +31668,7 @@ var SA_TUT_AVATARS = {
       var lit={}; for(var k in FUSE){ if(FUSE.hasOwnProperty(k)) lit[k]=FUSE[k].lit; }
       localStorage.setItem(SAVE_KEY, JSON.stringify({
         v:1, ts:Date.now(),
-        lit:lit, rem:rem, lastLit:lastLit, reserveFraction:reserveFraction,
+        lit:lit, rem:rem, lastLit:lastLit,
         sab:sabotageAccum, base:baselineAccum,
         comms:commsWatch, armed:clocksArmed,
         opening:openingApplied, trigger:fuseTriggerFired,
@@ -31727,13 +31720,6 @@ var SA_TUT_AVATARS = {
     for(var k in s.lit){ if(FUSE[k]) FUSE[k].lit=s.lit[k]; }
     rem          = s.rem     || {air:null,water:null,thermal:null,defense:null};
     lastLit      = s.lastLit || {air:4,water:4,thermal:4,defense:4};
-    reserveFraction={air:1,water:1,thermal:1};
-    for(var r=0;r<LETHAL.length;r++){
-      var rk=LETHAL[r], rf=s.reserveFraction && s.reserveFraction[rk];
-      if(typeof rf==="number" && isFinite(rf)){
-        reserveFraction[rk]=Math.max(0,Math.min(1,rf));
-      }
-    }
     sabotageAccum= s.sab  || 0;
     baselineAccum= s.base || 0;
     commsWatch   = s.comms|| {defense:true,air:true,water:true,thermal:true};
