@@ -75,4 +75,23 @@ test('unrelated tabs cannot consume the shared battle result', () => {
   assert.ok(html.includes("postToGame({type:'START_AGAIN_BATTLE_LAUNCHED'"));
   assert.ok(html.includes("postToGame({type:'START_AGAIN_BATTLE_CLOSED'"));
 });
+test('srcdoc panels resolve the parent origin from the referrer or document origin', () => {
+  const live = 'https://start-again.pplx.app';
+  // srcdoc: location reads "null", but the document keeps the game's origin.
+  assert.equal(api.resolveParentOrigin('null', live, ''), live);
+  assert.equal(api.resolveParentOrigin('null', live, live + '/'), live);
+  // URL-loaded same-origin frame keeps its previous behaviour.
+  assert.equal(api.resolveParentOrigin(live, live, live + '/index.html'), live);
+  // A sandboxed opaque frame stays opaque; trust still requires the exact parent window.
+  assert.equal(api.resolveParentOrigin('null', 'null', ''), 'null');
+  assert.equal(api.resolveParentOrigin('null', undefined, ''), 'null');
+  // A malformed referrer cannot widen trust.
+  assert.equal(api.resolveParentOrigin('null', live, 'not a url'), live);
+});
+test('a srcdoc panel still rejects unknown windows and foreign origins', () => {
+  const parentOrigin = api.resolveParentOrigin('null', 'https://start-again.pplx.app', '');
+  assert.equal(trusted(parent, 'https://start-again.pplx.app', parentOrigin), true);
+  assert.equal(trusted(parent, 'https://attacker.example', parentOrigin), false);
+  assert.equal(trusted(stranger, 'https://start-again.pplx.app', parentOrigin), false);
+});
 console.log(`\n${checks}/${checks} passing`);
