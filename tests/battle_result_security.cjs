@@ -64,4 +64,15 @@ test('game reporting and parent relay both carry battle correlation', () => {
   assert.ok(index.includes('battleId:rec.battleId, ts:rec.ts'));
   assert.ok(index.includes('ev.source!==commandFrame.contentWindow'));
 });
+test('unrelated tabs cannot consume the shared battle result', () => {
+  const index = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  const relay = index.slice(index.indexOf('if(!window.__saWinRelay)'), index.indexOf('// SP_TERMINAL_V1 (v8.43): the war-room button'));
+  assert.ok(relay.includes('if(!active) return;'));
+  assert.ok(relay.includes('rec.battleId!==active.id'));
+  assert.ok(relay.indexOf('rec.battleId!==active.id') < relay.indexOf('localStorage.removeItem(resultKey)'));
+  assert.ok(relay.includes('var resultKey="SA_BATTLE_RESULT:"+active.id'));
+  assert.ok(html.includes("var resultKey='SA_BATTLE_RESULT:'+__battleId"));
+  assert.ok(html.includes("postToGame({type:'START_AGAIN_BATTLE_LAUNCHED'"));
+  assert.ok(html.includes("postToGame({type:'START_AGAIN_BATTLE_CLOSED'"));
+});
 console.log(`\n${checks}/${checks} passing`);

@@ -15,6 +15,7 @@ This candidate is based on `aeadb08`, the existing isolated integrity patch imme
 - Death screen: the title and acknowledgement stay visible; only the long letter scrolls.
 - Reporting: short offline drift is shown in seconds instead of `0m`.
 - Battle-result safety: only the launched game or direct parent relay can submit a fresh result for the current battle. Winner labels are escaped on message and storage paths; advisor intents must come from the command frame.
+- Cross-tab isolation: each launched battle has its own storage key, and the parent only collects results registered by its active command frame. An unrelated or older game tab cannot consume a new battle's result.
 
 These are correctness and usability fixes, not a balance lock. Fuse tiers, POWER multipliers, decay intervals, sabotage intervals, the rest concession, and the 30-second action allowance are unchanged.
 
