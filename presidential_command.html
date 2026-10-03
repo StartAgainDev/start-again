@@ -530,6 +530,7 @@
     ov.querySelector('#btlActions').style.display='flex';
     var st=document.getElementById('btlStatus'); if(st) st.innerHTML='';
     __battleResolved=false;
+    postToGame({type:'START_AGAIN_BATTLE_CLOSED',battleId:__battleId});
     __battleId='';
     __battleLaunchTs=0;
     stopResultPolling();
@@ -584,13 +585,14 @@
     stopResultPolling();
     __resultPollIv = setInterval(function(){
       if(__battleResolved){ clearInterval(__resultPollIv); __resultPollIv=null; return; }
-      var raw=null; try{ raw=localStorage.getItem('SA_BATTLE_RESULT'); }catch(e){ return; }
+      var resultKey='SA_BATTLE_RESULT:'+__battleId;
+      var raw=null; try{ raw=localStorage.getItem(resultKey); }catch(e){ return; }
       if(!raw) return;
       var rec=null; try{ rec=JSON.parse(raw); }catch(e){ return; }
       if(!currentBattleResult(rec,__battleId,__battleLaunchTs)) return;
       if(document.getElementById('battleOverlay').style.display!=='flex') return;
       // fresh, valid result for THIS battle — consume it so it can't double-fire, then resolve.
-      try{ localStorage.removeItem('SA_BATTLE_RESULT'); }catch(e){}
+      try{ localStorage.removeItem(resultKey); }catch(e){}
       clearInterval(__resultPollIv); __resultPollIv=null;
       var won=(rec.result==='win');
       setBtlStatus('<span class="'+(won?'wait':'warn')+'">Game reported: <b>'+(won?'YOU WON':'you lost')+'</b>'+(rec.winner?' · winner: '+escapeBattleWinner(rec.winner):'')+' — resolving…</span>');
@@ -602,16 +604,18 @@
     // stamp the launch time + clear any old result so we only act on THIS battle's outcome
     __battleLaunchTs = Date.now();
     __battleId=__battleLaunchTs.toString(36)+'-'+Math.random().toString(36).slice(2);
-    try{ localStorage.removeItem('SA_BATTLE_RESULT'); }catch(e){}
+    try{ localStorage.removeItem('SA_BATTLE_RESULT:'+__battleId); }catch(e){}
     startResultPolling();
     // open the live game in a new window (it blocks iframe embedding, so we can't inline it)
     var launchURL=new URL(GAME_URL);
     launchURL.searchParams.set('battleId',__battleId);
     __gameWin = window.open(launchURL.href, 'startAgainBattle');
     if(!__gameWin){
+      stopResultPolling();
       setBtlStatus('<span class="warn">Pop-up blocked — please allow pop-ups for this site, then tap PLAY IT OUT again.</span>');
       return;
     }
+    postToGame({type:'START_AGAIN_BATTLE_LAUNCHED',battleId:__battleId,ts:__battleLaunchTs});
     setBtlStatus('<span class="wait">▶ Game launched in a new window. Win it and the district liberates automatically — or use the buttons below when you\'re done.</span>'+
       '<div style="margin-top:10px;display:flex;gap:8px"><button class="btlBtn win" style="flex:1;font-size:12px;padding:11px 0" onclick="window.__spResolve(true)">✔ I WON — TAKE DISTRICT</button> '+
       '<button class="btlBtn lose" style="flex:0 0 34%;font-size:11px;padding:11px 0" onclick="window.__spResolve(false)">✖ I LOST</button></div>'+
@@ -637,6 +641,7 @@
     if(__battleResolved) return;   // resolve a battle exactly once (manual click OR game message)
     __battleResolved=true;
     stopResultPolling();
+    postToGame({type:'START_AGAIN_BATTLE_CLOSED',battleId:__battleId});
     var ov=document.getElementById('battleOverlay');
     var id=ov.getAttribute('data-id');
     if(win){
@@ -655,6 +660,7 @@
   window.__spResolve = resolveBattle;
   window.__spCloseBattle = function(){
     document.getElementById('battleOverlay').style.display='none';
+    postToGame({type:'START_AGAIN_BATTLE_CLOSED',battleId:__battleId});
     stopResultPolling(); __battleId=''; __battleLaunchTs=0;
   };
 

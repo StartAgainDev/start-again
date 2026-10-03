@@ -73,6 +73,8 @@ Add checks for repeated post-pause ticks, depletion of a selected source, transi
 
 - Pre-publish review found a pre-existing cross-window result injection/spoofing path.
 - Added expected-window/origin checks, per-launch battle IDs, fresh timestamps, escaped winner labels, and command-frame-only advisor messages.
-- Added eight executable message-safety checks.
+- Added nine executable message-safety checks.
 - Browser tests rejected unrelated senders and stale IDs, displayed attack markup as text without creating an image/SVG, and preserved valid popup, storage-poll, parent-relay, and advisor flows.
 - Local developer/game-state controls remain intentionally available for single-player playtesting and are not an authentication boundary.
+- Re-review caught a shared-storage consumption race; per-battle keys and active-frame registration now protect results from unrelated tabs.
+- Browser check preserved an unrelated result while the matching active parent relay resolved its battle, with command-frame storage unavailable.

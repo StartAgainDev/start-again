@@ -5284,7 +5284,7 @@ function __reportBattleResult(){
     //     acts on a FRESH result, never a stale one from a previous battle.
     try{
       var rec = JSON.stringify(payload);
-      localStorage.setItem('SA_BATTLE_RESULT', rec);
+      localStorage.setItem(payload.battleId?'SA_BATTLE_RESULT:'+payload.battleId:'SA_BATTLE_RESULT', rec);
     }catch(e){}
   }catch(e){}
 }
@@ -29200,6 +29200,19 @@ var SA_TUT_AVATARS = {
         try{ expectedOrigin=new URL(commandFrame.src,location.href).origin; }catch(e){ return; }
         if(ev.origin!==expectedOrigin && ev.origin!=="null") return;
         var m=ev && ev.data; if(!m || typeof m!=="object") return;
+        if(m.type==="START_AGAIN_BATTLE_LAUNCHED"){
+          if(typeof m.battleId==="string" && m.battleId.length>0 && m.battleId.length<=100 &&
+             typeof m.ts==="number" && isFinite(m.ts)){
+            window.__saActiveBattle={id:m.battleId,ts:m.ts};
+          }
+          return;
+        }
+        if(m.type==="START_AGAIN_BATTLE_CLOSED"){
+          if(window.__saActiveBattle && window.__saActiveBattle.id===m.battleId){
+            window.__saActiveBattle=null;
+          }
+          return;
+        }
         if(m.type==="SA_OPEN_VANCE"){
           try{ if(window.saVanceDialogue && typeof window.saVanceDialogue.open==="function") window.saVanceDialogue.open(null, true); }catch(e){}
           return;
@@ -29229,16 +29242,20 @@ var SA_TUT_AVATARS = {
       window.__saWinRelay = true;
       var __saLastWinTs = 0;
       setInterval(function(){
-        var raw=null; try{ raw=localStorage.getItem("SA_BATTLE_RESULT"); }catch(e){ return; }
+        var active=window.__saActiveBattle;
+        if(!active) return; // blank or unrelated game tabs must never consume another battle's result
+        var resultKey="SA_BATTLE_RESULT:"+active.id;
+        var raw=null; try{ raw=localStorage.getItem(resultKey); }catch(e){ return; }
         if(!raw) return;
         var rec=null; try{ rec=JSON.parse(raw); }catch(e){ return; }
         if(!rec || (rec.result!=="win" && rec.result!=="loss") || !rec.ts) return;
+        if(rec.battleId!==active.id || typeof rec.ts!=="number" || !isFinite(rec.ts) || rec.ts<active.ts) return;
         if(rec.ts<=__saLastWinTs) return;             // already forwarded this one
         var frame=document.getElementById("saCommandFrame");
-        if(!frame || !frame.contentWindow) return;     // terminal not open yet
+        if(!frame || !frame.getAttribute("src") || !frame.contentWindow) return;
         __saLastWinTs = rec.ts;
         // clear the key so it can't be re-read, then forward into the terminal iframe.
-        try{ localStorage.removeItem("SA_BATTLE_RESULT"); }catch(e){}
+        try{ localStorage.removeItem(resultKey); }catch(e){}
         try{ frame.contentWindow.postMessage({ type:"START_AGAIN_RESULT", battleId:rec.battleId, ts:rec.ts, result:rec.result, winner:rec.winner||null, reason:rec.reason||null }, "*"); }catch(e){}
       }, 600);
     }
