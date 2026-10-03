@@ -678,6 +678,23 @@ test('assassins cannot follow the player into Single Player', () => {
   eq(h.ev('huntTimeout'), null, 'no assassination is scheduled');
 });
 
+test('a malformed frozen flag cannot suppress offline drain', () => {
+  const h = runningRun();
+  h.ev('saveBunkerState()');
+  const s = JSON.parse(h.storage.SA_BUNKER_STATE_V1); s.frozen = 'false';
+  h.storage.SA_BUNKER_STATE_V1 = JSON.stringify(s);
+  h.advance(3600 * 1000);
+  const res = h.ev('restoreBunkerRun()');
+  eq(res.frozen, false, 'only a boolean true freezes the bunker');
+  assert(res.eff > 0, 'the hour away is billed normally');
+});
+
+test('opening a prompt re-scrolls so the last menu lines stay visible', () => {
+  const body = HTML.slice(HTML.indexOf('function askInput(promptSym, opts){'));
+  const fn = body.slice(0, body.indexOf('function hideInput'));
+  assert(fn.indexOf('scrollEnd()') > fn.indexOf('form.style.display="flex"'), 'askInput must scroll after showing the prompt');
+});
+
 test('freezing before the run has started writes no save', () => {
   const h = makeHarness();
   h.ev('freezeBunker()');

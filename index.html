@@ -31856,7 +31856,7 @@ var SA_TUT_AVATARS = {
       }
     }
     // SINGLE_PLAYER_FREEZE_V1: time spent in Single Player is never billed to the bunker.
-    var frozen=!!s.frozen; bunkerFrozen=false;
+    var frozen=(s.frozen===true); bunkerFrozen=false;   // only a real boolean freezes
 
     var gap = Math.max(0, (Date.now()-s.ts)/1000);
     var eff = (!frozen && gap>=OFFLINE_MIN_GAP_S) ? effectiveOfflineSecs(gap) : 0;
@@ -32083,6 +32083,9 @@ var SA_TUT_AVATARS = {
     promptEl.textContent = promptSym||">";
     input.value=""; input.type = opts.password?"text":"text";
     form.style.display="flex";
+    // MOBILE_PROMPT_SCROLL_V1 (2026-10-03): showing the prompt shrinks the screen, which hid
+    // the last menu lines (e.g. [5] and [6] on the hub) on phones. Re-scroll once it is shown.
+    scrollEnd(); try{ requestAnimationFrame(scrollEnd); }catch(e){}
     input.focus();
     mode = opts.mode||"input";
     input.setAttribute("maxlength", opts.maxlength||40);
