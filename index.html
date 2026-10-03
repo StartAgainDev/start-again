@@ -29008,7 +29008,7 @@ var SA_TUT_AVATARS = {
            back to this screen, and the terminal must stop offering one. saDoorChosen is
            read by the terminal to drop [5] PROCEED (the memorandum, which is only the
            gateway TO the doors) and to stop DISCONNECT reopening them. */
-        if(single) single.addEventListener("click", function(){ try{ if(window.saTermSfx) window.saTermSfx.enter(); }catch(e){} window.saDoorChosen="single"; if(window.saOpenNationSelect) window.saOpenNationSelect(); });
+        if(single) single.addEventListener("click", function(){ try{ if(window.saTermSfx) window.saTermSfx.enter(); }catch(e){} window.saDoorChosen="single"; try{ if(typeof window.saFreezeBunker==="function") window.saFreezeBunker(); }catch(e){} if(window.saOpenNationSelect) window.saOpenNationSelect(); });
         // BUNKER_LOSS_CONDITION_V1: the Idle door is a SURVIVAL layer, not a conquest layer.
         // Its only loss condition is death by life-support failure, which severs terminal
         // access. Conquest and overthrow are resolved at the district / World Ring tiers.
@@ -30579,12 +30579,42 @@ var SA_TUT_AVATARS = {
     var s=""; for(var i=0;i<4;i++){ s+=A.charAt(Math.floor(Math.random()*A.length)); }
     return s;
   }
-  function huntRemain(){ return Math.max(0, SA_HUNT_SECS - Math.floor((Date.now()-huntStart)/1000)); }
+  /* FAIR_HUNT_CLOCK_V1 (2026-10-03): the hidden budget measures the PLAYER, not the
+     typewriter. Printing the hub, mesh, password and controls screens alone took 12.5s of
+     GUARDS' 30-second window, so even a player who went straight there could miss it.
+     Time the terminal spends printing text while the hunt is armed is credited back; time
+     at a prompt, on the doors screen, or anywhere else still counts in full. */
+  var huntCreditMs = 0;              // printing time credited back while the hunt is armed
+  var typingDepth = 0, typingSince = 0;
+  function typingBegin(){ if(typingDepth++===0) typingSince=Date.now(); }
+  function typingEnd(){
+    if(typingDepth<=0) return;
+    if(--typingDepth===0 && huntArmed && !huntResolved){
+      huntCreditMs += Math.max(0, Date.now()-Math.max(typingSince, huntStart));
+    }
+  }
+  function huntElapsedMs(){
+    var now=Date.now();
+    var printing=(typingDepth>0) ? Math.max(0, now-Math.max(typingSince, huntStart)) : 0;
+    return Math.max(0, now-huntStart-huntCreditMs-printing);
+  }
+  function huntRemain(){ return Math.max(0, SA_HUNT_SECS - Math.floor(huntElapsedMs()/1000)); }
+  function scheduleHunt(){
+    if(huntTimeout){ clearTimeout(huntTimeout); huntTimeout=null; }
+    if(!huntArmed || huntResolved) return;
+    huntTimeout=setTimeout(function(){
+      huntTimeout=null;
+      if(!huntArmed || huntResolved) return;
+      // Printing time may have been credited since this was scheduled: re-check first.
+      if(SA_HUNT_SECS*1000-huntElapsedMs()>25){ scheduleHunt(); return; }
+      assassinationDeath();
+    }, Math.max(25, SA_HUNT_SECS*1000-huntElapsedMs()));
+  }
   function armHunt(){
     // Never arm if the terminal has since closed, or if already armed/resolved.
     if(!termActive || huntArmed || huntResolved) return;
-    huntArmed=true; huntStart=Date.now();
-    huntTimeout=setTimeout(function(){ assassinationDeath(); }, SA_HUNT_SECS*1000);
+    huntArmed=true; huntStart=Date.now(); huntCreditMs=0;
+    scheduleHunt();
   }
   function disarmHunt(){
     huntArmed=false; if(huntTimeout){ clearTimeout(huntTimeout); huntTimeout=null; }
@@ -30873,17 +30903,31 @@ var SA_TUT_AVATARS = {
   //    and if back to 4/4 -> clear the clock (system safe again).
   // Track each system's last-seen fuse count so reconcile knows if a fuse was ADDED or LOST.
   var lastLit = {air:4, water:4, thermal:4, defense:4};
-  /* FULL_CAPACITY_RULE (open design decision, 2026-10-03): reaching 4/4 clears the
-     countdown, so a later loss starts that tier's full budget. A spare fuse cycled
-     through 4/4 can therefore refill a depleted reserve. Whether full capacity should
-     refill instantly (the current rule), gradually, or not at all is a balance call,
-     so the integrity hotfix deliberately leaves it unchanged. */
+  /* FULL_CAPACITY_REFILL_V1 (2026-10-03, replaces the instant-refill FULL_CAPACITY_RULE):
+     4/4 repairs a system GRADUALLY. Reaching full capacity stops the drain but keeps the
+     reserve already spent; it then refills on real time, an empty reserve in
+     FULL_CAPACITY_REFILL_S (24h). A later fuse loss starts from the CURRENT reserve instead
+     of a fresh full budget, so moving a spare fuse in and straight back out no longer resets
+     a depleted system. The panel shows the refilling reserve at 4/4, so nothing is hidden. */
+  var FULL_CAPACITY_REFILL_S = 24*3600;
+  var reserve = {air:1, water:1, thermal:1};   // reserve fraction carried while a system is at 4/4
+  function clamp01(x){ return (typeof x==="number" && isFinite(x)) ? Math.max(0, Math.min(1, x)) : 1; }
   function reconcileClock(key){
     var b=budgetFor(key);              // budget (spec-min) at the CURRENT fuse level; null at 4/4
     var nowLit=FUSE[key].lit, was=lastLit[key];
     lastLit[key]=nowLit;
-    if(b===null){ rem[key]=null; return; }   // back to 4/4 -> system safe, clock cleared
-    if(rem[key]===null){ rem[key]=b; return; }   // clock just born -> full tier budget
+    if(b===null){
+      // Back to 4/4: the drain stops, but the reserve keeps the level it had.
+      var fromB=CLOCK_MIN[key][was];
+      if(rem[key]!==null && fromB>0 && (key in reserve)) reserve[key]=clamp01(rem[key]/fromB);
+      rem[key]=null; return;
+    }
+    if(rem[key]===null){
+      // Leaving 4/4: the countdown starts from the current reserve.
+      rem[key]=b*((key in reserve) ? clamp01(reserve[key]) : 1);
+      if(key in reserve) reserve[key]=1;
+      return;
+    }
     // FUSE_MOVE_NO_FREE_TIME_V1 (2026-09-07): a fuse change preserves the same FRACTION of
     // the tier's budget. Prior behaviour credited backdated survival time on additions,
     // so moving a fuse away and back inflated AIR from 100s to 86500s in two clicks. The
@@ -31043,9 +31087,15 @@ var SA_TUT_AVATARS = {
     for(var j=0;j<FILL_ORDER.length && spare>0;j++){ if(!commsWatch[FILL_ORDER[j]]){ commsWatch[FILL_ORDER[j]]=true; spare--; } }
   }
   // A live health bar (0..1 of the system's CURRENT tier budget). Full at 4/4.
+  function barFor(frac){
+    if(!(frac>=0)) frac=0; if(frac>1) frac=1;
+    var filled=Math.round(frac*6), s="";
+    for(var i=0;i<6;i++){ s += (i<filled ? "\u2588" : "\u2591"); }
+    return s;
+  }
   function healthBar(key){
     var lit=FUSE[key].lit;
-    if(lit>=4) return "\u2588\u2588\u2588\u2588\u2588\u2588";     // 4/4 = full, unlimited
+    if(lit>=4) return barFor((key in reserve) ? reserve[key] : 1);  // 4/4: the (refilling) reserve
     var b=CLOCK_MIN[key][lit]; if(b===null) return "\u2588\u2588\u2588\u2588\u2588\u2588";
     var frac = (rem[key]!==null) ? (rem[key]/b) : 1;
     if(frac<0) frac=0; if(frac>1) frac=1;
@@ -31067,6 +31117,10 @@ var SA_TUT_AVATARS = {
     }
     var bar=healthBar(key);
     if(lit>=4){
+      // FULL_CAPACITY_REFILL_V1: a refilling reserve shows how long until it is full again.
+      if((key in reserve) && reserve[key]<0.9995){
+        return bar+"  full in "+fmtDur((1-reserve[key])*FULL_CAPACITY_REFILL_S*TIME_SCALE);
+      }
       // Full & watched: show a full bar + an "OK/unlimited" marker (no countdown yet).
       return bar+(key==="air" ? "  \u221e" : "  OK");
     }
@@ -31080,6 +31134,7 @@ var SA_TUT_AVATARS = {
   function disarmClocks(){
     clocksArmed=false; if(clockTick){ clearInterval(clockTick); clockTick=null; }
     rem={air:null, water:null, thermal:null, defense:null};
+    reserve={air:1, water:1, thermal:1};
     critBeeped={air:false, water:false, thermal:false, defense:false};
     lastLit={air:4, water:4, thermal:4, defense:4};
     sabotageAccum=0;
@@ -31100,6 +31155,7 @@ var SA_TUT_AVATARS = {
   var ACTION_PAUSE_MAX_S = 30;
   var actionPauseStart = 0;
   function clockStep(){
+    if(bunkerFrozen) return;   // SINGLE_PLAYER_FREEZE_V1: a frozen bunker never ticks (and is never torn down)
     var now=Date.now();
     if(actionPause){
       var pauseEnd=actionPauseStart+ACTION_PAUSE_MAX_S*1000;
@@ -31184,6 +31240,15 @@ var SA_TUT_AVATARS = {
     // Convert elapsed REAL seconds -> spec-minutes drained, scaled by POWER (weak power drains faster).
     var drainedMin = (dtReal / TIME_SCALE) * mult;
     var died=null;
+    // FULL_CAPACITY_REFILL_V1: a system at 4/4 refills its reserve on wall-clock time.
+    if(fullDt>0){
+      for(var rf=0;rf<LETHAL.length;rf++){
+        var rk=LETHAL[rf];
+        if(rem[rk]===null && FUSE[rk].lit>=4 && reserve[rk]<1){
+          reserve[rk]=Math.min(1, reserve[rk]+fullDt/(FULL_CAPACITY_REFILL_S*TIME_SCALE));
+        }
+      }
+    }
     for(var i=0;i<LETHAL.length;i++){
       var key=LETHAL[i];
       if(rem[key]===null) continue;             // system healthy (4/4)
@@ -31306,7 +31371,7 @@ var SA_TUT_AVATARS = {
       var lit={}; for(var k in FUSE){ if(FUSE.hasOwnProperty(k)) lit[k]=FUSE[k].lit; }
       localStorage.setItem(SAVE_KEY, JSON.stringify({
         v:1, ts:Date.now(),
-        lit:lit, rem:rem, lastLit:lastLit,
+        lit:lit, rem:rem, lastLit:lastLit, reserve:reserve, frozen:bunkerFrozen,
         sab:sabotageAccum, base:baselineAccum,
         comms:commsWatch, armed:clocksArmed,
         opening:openingApplied, trigger:fuseTriggerFired,
@@ -31335,6 +31400,24 @@ var SA_TUT_AVATARS = {
     saveBunkerState();
   }
   function hasResumableSave(){ return !!loadBunkerSave(); }
+  /* SINGLE_PLAYER_FREEZE_V1 (2026-10-03): the Single Player door leaves the bunker for the
+     national vault, which has no survival timer. Freeze the bunker exactly where it is: no
+     life-support drain, decay, sabotage, assassins or refill while Single Player is active,
+     and no offline drain for that time. The run and its save resume untouched the next time
+     the player opens the bunker terminal (restoreBunkerRun thaws it). */
+  var bunkerFrozen=false;
+  function freezeBunker(){
+    if(bunkerFrozen || deadRun) return false;
+    if(clocksArmed && (termActive || bunkerLive)) clockStep();   // bill live time up to the door
+    if(deadRun) return false;                                    // that bill was fatal
+    disarmHunt(); disarmFuseTrigger();
+    if(clockTick){ clearInterval(clockTick); clockTick=null; }
+    bunkerFrozen=true; bunkerLive=false; fusePanelOpen=false; actionPause=false;
+    saveBunkerState();      // persists frozen:true (a run that never started has nothing to save)
+    clocksArmed=false;      // so resuming re-arms the live tick
+    return true;
+  }
+  window.saFreezeBunker = freezeBunker;
 
   // Restore a saved run and apply the absence. Returns {away, eff, died} or null.
   function restoreBunkerRun(){
@@ -31350,9 +31433,18 @@ var SA_TUT_AVATARS = {
     if(s.pass) bunkerPass=s.pass;
     bunkerUnlocked = !!s.unlocked;
     critBeeped={air:false,water:false,thermal:false,defense:false};
+    // FULL_CAPACITY_REFILL_V1: saves without reserve data predate gradual refill (full).
+    reserve={air:1,water:1,thermal:1};
+    if(s.reserve){
+      for(var rr=0;rr<LETHAL.length;rr++){
+        var rk=LETHAL[rr]; if(typeof s.reserve[rk]==="number") reserve[rk]=clamp01(s.reserve[rk]);
+      }
+    }
+    // SINGLE_PLAYER_FREEZE_V1: time spent in Single Player is never billed to the bunker.
+    var frozen=!!s.frozen; bunkerFrozen=false;
 
     var gap = Math.max(0, (Date.now()-s.ts)/1000);
-    var eff = (gap>=OFFLINE_MIN_GAP_S) ? effectiveOfflineSecs(gap) : 0;
+    var eff = (!frozen && gap>=OFFLINE_MIN_GAP_S) ? effectiveOfflineSecs(gap) : 0;
     var died = null;
     if(eff>0){
       simSilent=true;                       // catch-up is silent
@@ -31365,13 +31457,17 @@ var SA_TUT_AVATARS = {
     lastTickTs = Date.now();                // the gap is now accounted for — don't let the
                                             // live tick bill it a second time
     awaySecsAtResume = gap;
-    return { away:gap, eff:eff, died:died };
+    return { away:gap, eff:eff, died:died, frozen:frozen };
   }
   // Human-readable catch-up report for the resumed screen.
   function offlineReportLines(res){
     var out=[];
     out.push({t:"", instant:true});
     out.push({t:"// SESSION RESTORED — NODE 7 //", cls:"saTerm-amber", speed:26});
+    if(res.frozen){
+      out.push({t:"The bunker held while you led the nation. No drift.", cls:"saTerm-dim", speed:22});
+      return out;
+    }
     out.push({t:"You were away "+fmtAway(res.away)+". The bunker was not.", cls:"saTerm-dim", speed:22});
     if(res.eff<=0){
       out.push({t:"No meaningful drift. Systems as you left them.", cls:"saTerm-dim", speed:22});
@@ -31462,8 +31558,11 @@ var SA_TUT_AVATARS = {
           systems:FUSE_ORDER.map(function(k){
             return {system:k, fuses:FUSE[k].lit, status:WATCHABLE.indexOf(k)>=0?commsCell(k):clockLabel(k),
               realSeconds:rem[k]==null?null:Math.max(0,rem[k]*TIME_SCALE/powerMult()),
+              reserve:(k in reserve)?reserve[k]:null,
               watched:!!commsWatch[k]};
           }),
+          hunt:{armed:huntArmed, resolved:huntResolved, remaining:huntArmed?huntRemain():null},
+          frozen:bunkerFrozen,
           actionPause:actionPause,
           pauseRemaining:actionPause?Math.max(0,ACTION_PAUSE_MAX_S-(Date.now()-actionPauseStart)/1000):0
         });
@@ -31523,7 +31622,13 @@ var SA_TUT_AVATARS = {
      quicker than the game's own default, and then wiped by the next screen before
      anyone could finish reading them. TYPE_FLOOR stops any line typing faster than
      a readable baseline. Anything that clears afterwards must use hold(). */
-  var TYPE_FLOOR = 16;
+  /* TERMINAL_PACING_V1 (2026-10-03): text prints at half its READABILITY_V1 duration
+     (TYPE_SCALE) with an 8ms/char floor. Readability no longer depends on slow typing:
+     every screen that clears already waits for PRESS ENTER (hold()). Enter, Space or a tap
+     while text is printing finishes it instantly (skipTyping) until the next prompt. */
+  var TYPE_SCALE = 0.5;
+  var TYPE_FLOOR = 8;
+  var skipTyping = false;
   var emergencyRender = false; // when true, every typeLine renders instantly (see URGENT_SCREEN_INSTANT_V1)
   /* URGENT_SCREEN_INSTANT_V1 (2026-09-07): the global 16ms/char floor applied to EVERY line
      was slowing timed decisions (Bunker Defense) and the emergency-resume fuse panel enough
@@ -31532,18 +31637,24 @@ var SA_TUT_AVATARS = {
      continue to use the floor by simply omitting speed or passing a positive value. */
   function typeLine(text, opts){
     opts=opts||{}; var cls=opts.cls||"", allowFmt=opts.fmt;
-    var speed = (emergencyRender || opts.speed === 0) ? 0 : Math.max(opts.speed||16, TYPE_FLOOR);
+    var speed = (emergencyRender || opts.speed === 0 || skipTyping) ? 0 : Math.max(Math.round((opts.speed||16)*TYPE_SCALE), TYPE_FLOOR);
     return new Promise(function(res){
       var p=addLine(cls); var i=0; var raw=String(text);
       if(opts.instant || speed===0){ p.innerHTML = allowFmt?fmt(raw):esc(raw); scrollEnd(); return res(); }
+      var done=false;
+      function finish(){ if(done) return; done=true; typingEnd(); res(); }
+      typingBegin();   // FAIR_HUNT_CLOCK_V1: printing time is not the player's time
       (function tick(){
-        i++;
-        var chunk=raw.slice(0,i);
-        p.innerHTML = allowFmt?fmt(chunk):esc(chunk);
-        scrollEnd();
-        try{ if(window.saTermSfx && raw.charAt(i-1)!==" ") window.saTermSfx.type(); }catch(e){} // subtle typewriter tick
-        if(i<raw.length) setTimeout(tick, speed);
-        else res();
+        try{
+          if(skipTyping){ p.innerHTML = allowFmt?fmt(raw):esc(raw); scrollEnd(); return finish(); }
+          i++;
+          var chunk=raw.slice(0,i);
+          p.innerHTML = allowFmt?fmt(chunk):esc(chunk);
+          scrollEnd();
+          try{ if(window.saTermSfx && raw.charAt(i-1)!==" ") window.saTermSfx.type(); }catch(e){} // subtle typewriter tick
+          if(i<raw.length) setTimeout(tick, speed);
+          else finish();
+        }catch(err){ finish(); }
       })();
     });
   }
@@ -31553,6 +31664,7 @@ var SA_TUT_AVATARS = {
   // ---- input line ---------------------------------------------------------
   function askInput(promptSym, opts){
     opts=opts||{};
+    skipTyping=false;   // TERMINAL_PACING_V1: a skip lasts until the next prompt
     promptEl.textContent = promptSym||">";
     input.value=""; input.type = opts.password?"text":"text";
     form.style.display="flex";
@@ -33137,6 +33249,7 @@ var SA_TUT_AVATARS = {
     DEPARTMENTS.forEach(function(d){ if(d._memoRead) d._memoRead=false; }); // memos unread again
     // fresh bunker-hunt state each game (armed later, when the HUB first shows)
     deadRun=false; // DEAD_RUN_LATCH_V1: a brand new run may persist normally again.
+    bunkerFrozen=false; // SINGLE_PLAYER_FREEZE_V1: a brand new run is never frozen
     disarmHunt(); huntArmed=false; huntResolved=false; huntStart=0; bunkerCleared=false; termActive=true;
     bunkerPass=genBunkerPass(); bunkerPassTries=0; bunkerLocked=false; bunkerUnlocked=false; // fresh rotating gate each run (death -> open() -> new key + re-lock)
     resetFuses(); moveFrom=-1; disarmClocks(); disarmFuseTrigger(); fusePanelOpen=false; pendingBlown=0; bunkerLive=false; // fuse grid back to SMART BUILD (all 4/4), clocks off, trigger disarmed, no pending damage, bunker not yet live, each game
@@ -33216,6 +33329,10 @@ var SA_TUT_AVATARS = {
         e.preventDefault(); e.stopPropagation(); dismissPlate();
       }
       return;
+    }
+    // TERMINAL_PACING_V1: Enter or Space while the terminal is printing finishes the text.
+    if(busy && form && form.style.display==="none" && (e.key==="Enter" || e.key===" " || e.key==="Spacebar")){
+      e.preventDefault(); skipTyping=true; return;
     }
     if(e.key==="Escape"){ e.preventDefault(); close(); }
   }
@@ -33432,6 +33549,8 @@ var SA_TUT_AVATARS = {
     var plateEl=$("saTermPlate");
     if(plateEl) plateEl.addEventListener("click", function(ev){ ev.preventDefault(); dismissPlate(); }, false);
     if(!term) return;
+    // TERMINAL_PACING_V1: tapping the screen while text is printing finishes it (touch has no Enter).
+    if(screen) screen.addEventListener("pointerdown", function(){ if(busy && form && form.style.display==="none") skipTyping=true; }, false);
     // Keystroke click + audio unlock (first key resumes the AudioContext under a user gesture).
     input.addEventListener("keydown", function(e){
       try{ if(window.saTermSfx){ window.saTermSfx.unlock(); if(e.key && e.key.length===1) window.saTermSfx.key(); } }catch(err){}

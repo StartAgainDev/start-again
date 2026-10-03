@@ -410,7 +410,7 @@ test('a move without a valid source is refused without throwing', () => {
   eq(h.ev('FUSE.air.lit'), 3, 'invalid source must not mutate destination');
 });
 
-test('full capacity clears the countdown (current rule; see FULL_CAPACITY_RULE)', () => {
+test('a quick 4/4 round trip keeps a depleted reserve', () => {
   const h = makeHarness();
   h.ev(`
     openingApplied=true; termActive=true; bunkerLive=true;
@@ -419,9 +419,9 @@ test('full capacity clears the countdown (current rule; see FULL_CAPACITY_RULE)'
   `);
   eq(h.ev('FUSE.air.lit'), 4, 'AIR restored to full');
   eq(h.ev('rem.air'), null, 'full capacity has no countdown');
+  assert(Math.abs(h.ev('reserve.air') - 100 / h.ev('CLOCK_MIN.air[3]')) < 1e-12, 'the spent reserve is kept at 4/4');
   h.ev('moveFrom=2; onFuseTo("4");');
-  eq(h.ev('rem.air'), h.ev('CLOCK_MIN.air[3]'),
-    'under the current rule, a later loss starts the full 3/4 budget');
+  assert(Math.abs(h.ev('rem.air') - 100) < 1e-6, `moving the fuse straight back out must not refill AIR, got ${h.ev('rem.air')}`);
 });
 
 
@@ -557,6 +557,192 @@ test('public hosts do not expose local terminal inspection hooks', () => {
   const h = makeHarness(); // example.test, not localhost
   eq(h.ev('typeof window.__saFuse'), 'undefined', 'mutable inspection hook is local-only');
   eq(h.ev('typeof window.render_game_to_text'), 'undefined', 'QA text hook is local-only');
+});
+
+// ---------- FULL_CAPACITY_REFILL_V1 -------------------------------------
+
+function fullAirAt(fraction) {
+  const h = makeHarness();
+  h.ev(`
+    openingApplied=true; termActive=true; bunkerLive=true;
+    BASELINE_SECS=0; FUSE.air.lit=3; reconcileAll(); rem.air=CLOCK_MIN.air[3]*${fraction};
+    FUSE.air.lit=4; reconcileClock("air");
+  `);
+  return h;
+}
+
+test('a full system refills its reserve gradually over 24 hours', () => {
+  const h = fullAirAt(0.25);
+  h.ev('advanceBy(12*3600, false, 12*3600)');
+  assert(Math.abs(h.ev('reserve.air') - 0.75) < 1e-9, `12h at 4/4 refills half an empty reserve, got ${h.ev('reserve.air')}`);
+  h.ev('FUSE.air.lit=3; reconcileClock("air")');
+  assert(Math.abs(h.ev('rem.air') - 0.75 * h.ev('CLOCK_MIN.air[3]')) < 1e-6, 'a later loss starts from the refilled reserve');
+});
+
+test('refill stops at a full reserve', () => {
+  const h = fullAirAt(0.1);
+  h.ev('advanceBy(30*3600, false, 30*3600)');
+  eq(h.ev('reserve.air'), 1, 'reserve is capped at full');
+  h.ev('FUSE.air.lit=3; reconcileClock("air")');
+  eq(h.ev('rem.air'), h.ev('CLOCK_MIN.air[3]'), 'a full reserve gives the full 3/4 budget');
+});
+
+test('refill uses wall time offline, not the life-support rest rate', () => {
+  const h = fullAirAt(0.4);
+  h.ev('saveBunkerState()');
+  h.advance(6 * 3600 * 1000);
+  h.ev('restoreBunkerRun()');
+  assert(Math.abs(h.ev('reserve.air') - 0.65) < 1e-9, `6h away refills a quarter of the reserve, got ${h.ev('reserve.air')}`);
+});
+
+test('legacy saves without reserve data load as full', () => {
+  const h = fullAirAt(0.2);
+  h.ev('saveBunkerState()');
+  const s = JSON.parse(h.storage.SA_BUNKER_STATE_V1); delete s.reserve;
+  h.storage.SA_BUNKER_STATE_V1 = JSON.stringify(s);
+  h.ev('restoreBunkerRun()');
+  eq(h.ev('reserve.air'), 1, 'pre-refill saves keep the old full-capacity meaning');
+});
+
+test('the panel shows a refilling reserve at 4/4', () => {
+  const h = fullAirAt(0.5);
+  const cell = h.ev('commsCell("air")');
+  assert(/full in 12h 0m/.test(cell), `refilling AIR shows time to full, got ${cell}`);
+  assert(cell.startsWith('\u2588\u2588\u2588\u2591\u2591\u2591'), `bar shows the reserve, got ${cell}`);
+  h.ev('reserve.air=1');
+  assert(/\u221e/.test(h.ev('commsCell("air")')), 'a full reserve shows the unlimited marker');
+});
+
+test('a new run starts with full reserves', () => {
+  const h = fullAirAt(0.3);
+  h.ev('disarmClocks()');
+  eq(h.ev('reserve.air'), 1, 'reserves reset with the run');
+});
+
+// ---------- SINGLE_PLAYER_FREEZE_V1 -------------------------------------
+
+function runningRun() {
+  const h = makeHarness();
+  h.ev(`
+    openingApplied=true; termActive=false; bunkerLive=true;
+    BASELINE_SECS=0; FUSE.air.lit=1; reconcileAll(); rem.air=3000;
+    armClocks();
+  `);
+  return h;
+}
+
+test('choosing Single Player freezes life support where it is', () => {
+  const h = runningRun();
+  h.advance(10 * 1000);
+  eq(h.ev('freezeBunker()'), true, 'a live run freezes');
+  const frozenAt = h.ev('rem.air');
+  assert(Math.abs(frozenAt - 2990) < 1e-6, `live seconds up to the door are billed, got ${frozenAt}`);
+  eq(h.ev('clockTick'), null, 'the live tick stops');
+  h.advance(3600 * 1000);
+  h.ev('clockStep()');
+  eq(h.ev('rem.air'), frozenAt, 'no drain while frozen');
+  eq(JSON.parse(h.storage.SA_BUNKER_STATE_V1).frozen, true, 'the save is marked frozen');
+});
+
+test('a frozen run is not charged for time away', () => {
+  const h = runningRun();
+  h.ev('freezeBunker()');
+  const frozenAt = h.ev('rem.air');
+  h.advance(10 * 3600 * 1000);
+  const res = h.ev('restoreBunkerRun()');
+  eq(res.frozen, true, 'restore reports the freeze');
+  eq(res.eff, 0, 'no offline drift is applied');
+  eq(h.ev('rem.air'), frozenAt, 'the countdown is exactly where it was frozen');
+  eq(h.ev('bunkerFrozen'), false, 'returning to the bunker thaws it');
+});
+
+test('a thawed run drains normally again', () => {
+  const h = runningRun();
+  h.ev('freezeBunker()');
+  h.advance(5000);
+  h.ev('restoreBunkerRun(); saveBunkerState(); termActive=true; armClocks();');
+  eq(h.ev('clocksArmed'), true, 'resuming re-arms the live tick');
+  const before = h.ev('rem.air');
+  h.advance(20 * 1000);
+  h.ev('clockStep()');
+  assert(Math.abs(before - h.ev('rem.air') - 20) < 1e-6, 'live drain resumes after the freeze');
+  eq(JSON.parse(h.storage.SA_BUNKER_STATE_V1).frozen, false, 'the thawed save is no longer frozen');
+});
+
+test('assassins cannot follow the player into Single Player', () => {
+  const h = makeHarness();
+  h.ev('termActive=true; huntResolved=false; huntArmed=false; armHunt(); termActive=false; bunkerLive=true;');
+  eq(h.ev('huntArmed'), true, 'hunt armed on the doors');
+  h.ev('freezeBunker()');
+  eq(h.ev('huntArmed'), false, 'leaving for Single Player disarms the hunt');
+  eq(h.ev('huntTimeout'), null, 'no assassination is scheduled');
+});
+
+test('freezing before the run has started writes no save', () => {
+  const h = makeHarness();
+  h.ev('freezeBunker()');
+  assert(!h.storage.SA_BUNKER_STATE_V1, 'nothing to persist yet');
+});
+
+test('the Single Player door freezes the bunker before opening the nations', () => {
+  const door = HTML.slice(HTML.indexOf('if(single) single.addEventListener("click"'));
+  const handler = door.slice(0, door.indexOf('});') + 3);
+  assert(handler.indexOf('saFreezeBunker') > 0 && handler.indexOf('saFreezeBunker') < handler.indexOf('saOpenNationSelect'),
+    'the door must freeze the bunker first');
+});
+
+// ---------- FAIR_HUNT_CLOCK_V1 + TERMINAL_PACING_V1 ----------------------
+
+function armedHunt() {
+  const h = makeHarness();
+  h.ev('termActive=true; huntResolved=false; huntArmed=false; armHunt();');
+  return h;
+}
+
+test('printing time is not charged to the hostile clock', () => {
+  const h = armedHunt();
+  h.advance(10 * 1000);
+  h.ev('typingBegin()');
+  h.advance(20 * 1000);
+  eq(h.ev('huntRemain()'), 80, 'time spent printing is frozen');
+  h.ev('typingEnd()');
+  h.advance(5 * 1000);
+  eq(h.ev('huntRemain()'), 75, 'only the 15 player seconds count');
+});
+
+test('the assassination waits for credited printing time', () => {
+  const h = armedHunt();
+  h.ev('typingBegin()'); h.advance(20 * 1000); h.ev('typingEnd()');
+  h.advance(70 * 1000);           // 90s of wall time, but only 70s of player time
+  const id = h.ev('huntTimeout');
+  h.tasks.get(id).f();            // the original 90s timer fires
+  eq(h.ev('huntResolved'), false, 'no assassination yet');
+  eq(h.ev('huntArmed'), true, 'hunt still running');
+  h.advance(20 * 1000);
+  h.tasks.get(h.ev('huntTimeout')).f();
+  eq(h.ev('huntResolved'), true, 'assassination at 90 player seconds');
+});
+
+test('GUARDS works for a player who reaches it within 30 player seconds', () => {
+  const h = armedHunt();
+  h.ev('typingBegin()'); h.advance(40 * 1000); h.ev('typingEnd()');
+  h.advance(29 * 1000);
+  assert(h.ev('huntRemain()') >= 60, 'GUARDS window still open after 40s of printing');
+});
+
+test('text prints twice as fast with a readable floor', () => {
+  const h = makeHarness();
+  eq(h.ev('TYPE_SCALE'), 0.5, 'half the previous duration');
+  eq(h.ev('TYPE_FLOOR'), 8, '8ms per character minimum');
+});
+
+test('a skip finishes printing instantly and ends at the next prompt', async () => {
+  const h = makeHarness();
+  h.ev('skipTyping=true; window.__done=false; typeLine("A long line of terminal text", {speed:45}).then(function(){ window.__done=true; });');
+  await Promise.resolve(); await Promise.resolve();
+  eq(h.ev('window.__done'), true, 'skipped text resolves without waiting for timers');
+  h.ev('askInput("SELECT [1-6] >", {mode:"hub"})');
+  eq(h.ev('skipTyping'), false, 'the skip ends when the player is asked for input');
 });
 
 // ---------- summary -----------------------------------------------------
