@@ -1,0 +1,12 @@
+{
+  "name": "start-again-regression-checks",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Dependency-free checks for the canonical Start Again HTML build",
+  "scripts": {
+    "test": "node tests/run.cjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

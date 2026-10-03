@@ -42,6 +42,16 @@ required; just open `index.html` in a browser to play).
 Open `index.html` in any modern browser.  
 No server or dependencies needed.
 
+## Regression checks
+
+Run `npm test` with Node 20 or later. No dependency installation is needed.
+The runner syntax-checks both HTML entry points and runs every bunker test suite
+present on the current branch.
+
+The isolated bunker hotfix must not include the provisional Local Economy/Home
+features from main. See [`docs/bunker-integrity-release.md`](docs/bunker-integrity-release.md)
+for scope, save compatibility, required static files, and the browser release gate.
+
 ## Versioning notes
 
 The prior playtester snapshots topped out at v7.7 ("Digital Playtester" title).  

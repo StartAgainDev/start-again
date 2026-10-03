@@ -1,0 +1,97 @@
+'use strict';
+
+const fs = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
+const assert = require('node:assert/strict');
+const html = fs.readFileSync(path.join(__dirname, '..', 'presidential_command.html'), 'utf8');
+const match = html.match(/\/\* BATTLE_MESSAGE_SAFETY_START \*\/([\s\S]*?)\/\* BATTLE_MESSAGE_SAFETY_END \*\//);
+assert.ok(match, 'Production message guards must exist');
+const api = vm.createContext({});
+vm.runInContext(match[1], api);
+const game = {}, parent = {}, self = {}, stranger = {};
+let checks = 0;
+function test(name, fn) {
+  fn();
+  checks++;
+  console.log(`[PASS] ${name}`);
+}
+const trusted = (source, origin, parentOrigin='https://start-again.pplx.app') =>
+  api.trustedBattleSender({source, origin}, game, parent, self, 'https://start-again.pplx.app', parentOrigin);
+const record = {type:'START_AGAIN_RESULT', result:'win', battleId:'current', ts:101};
+
+test('winner markup is escaped and non-string values are ignored', () => {
+  const escaped = api.escapeBattleWinner('<img src=x onerror="alert(1)"> & \'test\'');
+  assert.ok(!escaped.includes('<'));
+  assert.ok(escaped.includes('&lt;img'));
+  assert.ok(escaped.includes('&quot;'));
+  assert.ok(escaped.includes('&#39;'));
+  assert.equal(api.escapeBattleWinner({html:'bad'}), '');
+});
+test('oversized winner labels are bounded', () => {
+  assert.equal(api.escapeBattleWinner('x'.repeat(10000)).length, 160);
+});
+test('only the expected popup with an allowed origin is trusted', () => {
+  assert.equal(trusted(game, 'https://start-again.pplx.app'), true);
+  assert.equal(trusted(game, 'https://attacker.example'), false);
+  assert.equal(trusted(stranger, 'https://start-again.pplx.app'), false);
+});
+test('opaque-origin compatibility never grants trust to an unknown window', () => {
+  assert.equal(trusted(game, 'null'), true);
+  assert.equal(trusted(parent, 'null'), true);
+  assert.equal(trusted(stranger, 'null'), false);
+  assert.equal(trusted(null, 'null'), false);
+});
+test('direct parent relay checks its expected origin', () => {
+  assert.equal(trusted(parent, 'https://preview.example', 'https://preview.example'), true);
+  assert.equal(trusted(parent, 'https://attacker.example'), false);
+});
+test('fresh results are correlated with the currently launched battle', () => {
+  assert.equal(api.currentBattleResult(record, 'current', 100), true);
+  assert.equal(api.currentBattleResult({...record,battleId:'old'}, 'current', 100), false);
+  assert.equal(api.currentBattleResult({...record,ts:99}, 'current', 100), false);
+  assert.equal(api.currentBattleResult(record, '', 100), false);
+});
+test('malformed timestamps and results are rejected', () => {
+  for (const ts of [NaN, Infinity, '101', null]) {
+    assert.equal(api.currentBattleResult({...record,ts}, 'current', 100), false);
+  }
+  assert.equal(api.currentBattleResult({...record,result:'other'}, 'current', 100), false);
+});
+test('game reporting and parent relay both carry battle correlation', () => {
+  const index = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  assert.ok(index.includes("new URLSearchParams(window.location.search).get('battleId')"));
+  assert.ok(index.includes('battleId:rec.battleId, ts:rec.ts'));
+  assert.ok(index.includes('ev.source!==commandFrame.contentWindow'));
+});
+test('unrelated tabs cannot consume the shared battle result', () => {
+  const index = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  const relay = index.slice(index.indexOf('if(!window.__saWinRelay)'), index.indexOf('// SP_TERMINAL_V1 (v8.43): the war-room button'));
+  assert.ok(relay.includes('if(!active) return;'));
+  assert.ok(relay.includes('rec.battleId!==active.id'));
+  assert.ok(relay.indexOf('rec.battleId!==active.id') < relay.indexOf('localStorage.removeItem(resultKey)'));
+  assert.ok(relay.includes('var resultKey="SA_BATTLE_RESULT:"+active.id'));
+  assert.ok(html.includes("var resultKey='SA_BATTLE_RESULT:'+__battleId"));
+  assert.ok(html.includes("postToGame({type:'START_AGAIN_BATTLE_LAUNCHED'"));
+  assert.ok(html.includes("postToGame({type:'START_AGAIN_BATTLE_CLOSED'"));
+});
+test('srcdoc panels resolve the parent origin from the referrer or document origin', () => {
+  const live = 'https://start-again.pplx.app';
+  // srcdoc: location reads "null", but the document keeps the game's origin.
+  assert.equal(api.resolveParentOrigin('null', live, ''), live);
+  assert.equal(api.resolveParentOrigin('null', live, live + '/'), live);
+  // URL-loaded same-origin frame keeps its previous behaviour.
+  assert.equal(api.resolveParentOrigin(live, live, live + '/index.html'), live);
+  // A sandboxed opaque frame stays opaque; trust still requires the exact parent window.
+  assert.equal(api.resolveParentOrigin('null', 'null', ''), 'null');
+  assert.equal(api.resolveParentOrigin('null', undefined, ''), 'null');
+  // A malformed referrer cannot widen trust.
+  assert.equal(api.resolveParentOrigin('null', live, 'not a url'), live);
+});
+test('a srcdoc panel still rejects unknown windows and foreign origins', () => {
+  const parentOrigin = api.resolveParentOrigin('null', 'https://start-again.pplx.app', '');
+  assert.equal(trusted(parent, 'https://start-again.pplx.app', parentOrigin), true);
+  assert.equal(trusted(parent, 'https://attacker.example', parentOrigin), false);
+  assert.equal(trusted(stranger, 'https://start-again.pplx.app', parentOrigin), false);
+});
+console.log(`\n${checks}/${checks} passing`);
