@@ -10,6 +10,7 @@ The play-test link serves this branch straight from GitHub through raw.githack.c
 
 `https://raw.githack.com/StartAgainDev/start-again/feat/renewable-clocks-phase2/index.html`
 
+- The first time you open it, raw.githack.com shows its own "One more step" notice (with an advert). Click **Open the page**. It remembers that for this repo for 24 hours, then asks again. Your save is not affected.
 - Saves are kept in your browser for raw.githack.com, separately from the public site.
 - The dev time-skip `[T]` shows on this link and on local copies. It never shows on start-again.pplx.app.
 
