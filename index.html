@@ -30790,7 +30790,7 @@ var SA_TUT_AVATARS = {
     var heldSpare=(typeof ECON!=="undefined") ? ECON.inventory.heldByPlayer : 0;
     seq.push({t:"  POWER "+pm.cap+"% \u00b7 life support x"+pm.mult.toFixed(1)+" \u00b7 spare fuses held: "+heldSpare, cls:"saTerm-dim", speed:2});
     seq.push({t:"  [M] MOVE  [I] FIT A SPARE  [C] AIM SENSORS  [B] BACK", cls:"saTerm-menukey", speed:4});
-    if(SA_DEV_HOST) seq.push({t:"  [T] DEV TIME-SKIP (local copies only)", cls:"saTerm-dim", speed:0});
+    if(SA_DEV_HOST) seq.push({t:"  [T] DEV TIME-SKIP (test builds only)", cls:"saTerm-dim", speed:0});
     // One-shot result line (e.g. a fit), printed last so it sits next to the prompt on any screen.
     if(panelNote){ seq.push({t:panelNote.t, cls:panelNote.cls, speed:0}); panelNote=null; }
     return runSeq(seq).then(function(){
