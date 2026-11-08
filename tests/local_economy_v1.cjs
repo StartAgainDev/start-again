@@ -314,7 +314,8 @@ test('installFuse consumes a held fuse and adds it to a chosen slot in the live 
     FUSE.air.lit = 2;   // AIR is down two fuses
     reconcileAll();
     ECON.inventory.heldByPlayer = 1;
-    ECON.inventory.installed = 3;   // arbitrary sane start
+    ECON.inventory.availableStock -= 1;
+    ECON.syncLedger();   // FUSE_LEDGER_V2 (audit F5): installed mirrors the grid
   `);
   const beforeHeld = h.ev('ECON.inventory.heldByPlayer');
   const beforeInstalled = h.ev('ECON.inventory.installed');
@@ -323,6 +324,9 @@ test('installFuse consumes a held fuse and adds it to a chosen slot in the live 
   eq(ok, true, 'installFuse must succeed when a held fuse is available and the slot has room');
   eq(h.ev('ECON.inventory.heldByPlayer'), beforeHeld - 1, 'one fuse leaves heldByPlayer');
   eq(h.ev('ECON.inventory.installed'),    beforeInstalled + 1, 'one fuse enters installed');
+  eq(h.ev('ECON.inventory.installed'),
+     h.ev('FUSE.air.lit+FUSE.water.lit+FUSE.thermal.lit+FUSE.defense.lit+FUSE.power.lit+FUSE.comms.lit'),
+     'installed equals the fuses lit in the grid');
   eq(h.ev('FUSE.air.lit'), beforeAir + 1, 'AIR gains one lit fuse');
 });
 

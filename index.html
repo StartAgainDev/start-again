@@ -1,4 +1,11 @@
 <!DOCTYPE html>
+<!-- v8.90-dev: RENEWABLE CLOCKS PHASE 2, PART 1 (2026-11-08). Development build only, not live.
+     Refresh rule A (approved): clocks are never bought with coin. A fuse bought at the market and
+     fitted where one blew restores that system (same share of time; 4/4 stops the drain and the
+     reserve refills over 24h). Adds: [I] FIT A SPARE on the FUSE PANEL with a before/after preview,
+     a return report that lists fuses lost while away (burned out or sabotaged) and how to replace
+     them, a fuse ledger that counts the 24 grid fuses (F5), and a hidden dev time-skip for local
+     copies. Market earnings, shop stock size and the F1/F2 fixes await approval. -->
 <!-- v8.47: VAULT DOSSIERS + SOVEREIGN CURRENCIES + WELCOME-BACK CLUE (2026-07-19).
      SP_TERMINAL_V5: (1) Each central bank now holds its OWN sovereign fiat (USD/CNY/RUB/GBP/JPY/EUR)
      plus BTC & GEARS; looted foreign fiat lands in a new BANK 'FOREIGN RESERVES' section. (2) Entering
@@ -3174,7 +3181,7 @@
       <button id="saIntroRules" class="sa-intro-htp-link" type="button">New here? How to Play</button>
     </div>
   </div>
-  <div class="sa-intro-foot">The Civilisation Rebuild Board · v8.89 · Solo &amp; hot-seat playtest</div>
+  <div class="sa-intro-foot">The Civilisation Rebuild Board · v8.90-dev · Solo &amp; hot-seat playtest</div>
 </div>
 
 <div class="wrap">
@@ -3186,7 +3193,7 @@
        chess.com). The live faction/status #banner is MOVED into the left Players column as a slim
        bar (see #leftCol) so it no longer dominates the top. The DEV button moved down by the Log. -->
   <div class="titlebar">
-    <span class="buildtag" style="opacity:.3;font-size:9px;letter-spacing:.3px">v8.89</span>
+    <span class="buildtag" style="opacity:.3;font-size:9px;letter-spacing:.3px">v8.90-dev</span>
     <!-- HELP_BUTTON_MERGE_V1 (v7.74l): the standalone "? How to Play" header button was removed
          because it duplicated the "How to Play" item already inside the docked Guide menu. The
          single Guide button in the header now owns all help entry points (tour, Phase 2 guide,
@@ -30637,6 +30644,8 @@ var SA_TUT_AVATARS = {
     comms:   {lit:4, name:"COMMS",   kind:"vision"}    // telemetry, not lethal
   };
   var FUSE_ORDER = ["defense","air","power","water","thermal","comms"];
+  var FUSE_PROMPT = "FUSE PANEL [M / I / C / B] >";   // RENEWABLE_CLOCKS_FIT_V1
+  var panelNote = null;                               // {t, cls}: shown once under the next panel
   // Reset every system to the SMART BUILD entry state (all 4/4). Called on open()/new game.
   function resetFuses(){ for(var k in FUSE){ if(FUSE.hasOwnProperty(k)) FUSE[k].lit=4; } }
   // Time-to-death per fuses-lit, in REAL SECONDS at POWER 100% (x1.0). null = infinite / n/a.
@@ -30736,6 +30745,7 @@ var SA_TUT_AVATARS = {
       if(FUSE.defense.lit>0){ FUSE.defense.lit--; }     // perimeter breach -> 3/4
       var extra=0; if(yTrap){ extra=blowFuses(3); }      // Y punishment: 3 more, AIR-first (spills)
       reconcileClock("air"); reconcileClock("water"); reconcileClock("thermal");
+      try{ if(typeof ECON!=="undefined") ECON.syncLedger(); }catch(e){}   // FUSE_LEDGER_V2
       armClocks(); disarmFuseTrigger(); fuseTriggerFired=true; // opening handled here; retire the old timer
       if(!perimeterMailShown){ perimeterMailShown=true; MAIL_INBOX.unshift(MAIL_PERIMETER); MAIL_INBOX.unshift(MAIL_AIRLOSS); }
       try{ if(window.saTermSfx) window.saTermSfx.blow(); }catch(e){}
@@ -30757,7 +30767,7 @@ var SA_TUT_AVATARS = {
     var seq=[
       {t:"", instant:true},
       {t:"// BUNKER FUSE CONTROL \u2014 LIFE SUPPORT GRID //", cls:"saTerm-amber", speed:8},
-      {t:"6 systems \u00b7 4 fuses each \u00b7 fuses are scarce \u2014 they only move.", cls:"saTerm-dim", speed:3},
+      {t:"6 systems \u00b7 4 fuses each \u00b7 a blown fuse is gone for good.", cls:"saTerm-dim", speed:3},
       {t:"-----------------------------------------------------------", cls:"saTerm-dim", instant:true},
       {t:"  SYSTEM      FUSES     CLOCK", cls:"saTerm-dim", speed:2},
       {t:"  ---------   -----     ------------------------", cls:"saTerm-dim", instant:true}
@@ -30772,11 +30782,111 @@ var SA_TUT_AVATARS = {
       seq.push({t:line, cls:fuseLineCls(key), speed:2, sysKey:key});
     }
     seq.push({t:"-----------------------------------------------------------", cls:"saTerm-dim", instant:true});
-    seq.push({t:"  POWER "+pm.cap+"% \u2014 all clocks x"+pm.mult.toFixed(1)+".  Fuses only move \u2014 never created.", cls:"saTerm-dim", speed:2});
-    seq.push({t:"  [M] MOVE A FUSE   [C] AIM SENSORS   [B] BACK", cls:"saTerm-menukey", speed:4});
+    // RENEWABLE_CLOCKS_FIT_V1: replacements come from the market, so show what is held.
+    var heldSpare=(typeof ECON!=="undefined") ? ECON.inventory.heldByPlayer : 0;
+    seq.push({t:"  POWER "+pm.cap+"% \u00b7 life support x"+pm.mult.toFixed(1)+" \u00b7 spare fuses held: "+heldSpare, cls:"saTerm-dim", speed:2});
+    seq.push({t:"  [M] MOVE  [I] FIT A SPARE  [C] AIM SENSORS  [B] BACK", cls:"saTerm-menukey", speed:4});
+    if(SA_DEV_HOST) seq.push({t:"  [T] DEV TIME-SKIP (local copies only)", cls:"saTerm-dim", speed:0});
+    // One-shot result line (e.g. a fit), printed last so it sits next to the prompt on any screen.
+    if(panelNote){ seq.push({t:panelNote.t, cls:panelNote.cls, speed:0}); panelNote=null; }
     return runSeq(seq).then(function(){
-      panelRendering=false; busy=false; askInput("FUSE PANEL [M / C / B] >", {mode:"fuse", maxlength:2});
+      panelRendering=false; busy=false; askInput(FUSE_PROMPT, {mode:"fuse", maxlength:2});
     });
+  }
+  /* ---- RENEWABLE_CLOCKS_FIT_V1 (2026-11-08): the refresh action, rule A ---------------
+     Approved by the user: clocks are not bought with coin. A fuse bought at the market and
+     fitted where one blew restores that system's capacity. Time left keeps the same share
+     of the bigger budget (FUSE_MOVE_NO_FREE_TIME_V1), and at 4/4 the drain stops and the
+     spent reserve refills over FULL_CAPACITY_REFILL_S (FULL_CAPACITY_REFILL_V1). Fitting is
+     the only way a new fuse enters the grid, and each fit spends one held fuse, once. */
+  // Time left as the panel's clock shows it (liveLabel). POWER speeds that clock up or slows it
+  // down rather than changing the number, so previews use the same reading as the panel.
+  function clockLeft(key){ return (rem[key]==null) ? null : Math.max(0, rem[key]*TIME_SCALE); }
+  // COMMS only changes visibility: never preview a countdown the player has no sensor on.
+  function canSee(key){ return WATCHABLE.indexOf(key)<0 || !!commsWatch[key]; }
+  // The life-support system that will fail first, among those COMMS can see. Null if none drains.
+  function soonestVisibleFailure(){
+    var best=null;
+    for(var i=0;i<LETHAL.length;i++){
+      var k=LETHAL[i], left=clockLeft(k);
+      if(left===null || !canSee(k)) continue;
+      if(!best || left<best.secs) best={key:k, secs:left};
+    }
+    return best;
+  }
+  function fitPreview(key){
+    var lit=FUSE[key].lit;
+    if(lit>=4) return "full";
+    var to=lit+1;
+    if(key==="power") return "life support x"+POWER_MULT[lit].mult.toFixed(1)+" \u2192 x"+POWER_MULT[to].mult.toFixed(1);
+    if(key==="comms") return "+1 sensor channel";
+    if(!canSee(key)) return "no sensor on it";
+    if(key==="defense"){
+      if(to>=4) return "sabotage stops";
+      return "sabotage 1 per "+Math.round(SABOTAGE_SECS[lit]/3600)+"h \u2192 1 per "+Math.round(SABOTAGE_SECS[to]/3600)+"h";
+    }
+    var oldB=CLOCK_MIN[key][lit], now=clockLeft(key);
+    if(to>=4){
+      var share=(now!==null && oldB>0) ? Math.max(0, Math.min(1, rem[key]/oldB)) : 1;
+      var refill=(1-share)*FULL_CAPACITY_REFILL_S*TIME_SCALE;
+      return "drain stops"+(refill>=1 ? " \u00b7 full again in "+fmtDur(refill) : "");
+    }
+    if(now===null || !(oldB>0)) return "up one level";
+    var newB=CLOCK_MIN[key][to];
+    var after=Math.min(newB, rem[key]*(newB/oldB))*TIME_SCALE;
+    return fmtDur(now)+" \u2192 "+fmtDur(after)+" left";
+  }
+  function fitChoiceLines(){
+    var lines=[];
+    for(var i=0;i<FUSE_ORDER.length;i++){
+      var k=FUSE_ORDER[i], lit=FUSE[k].lit;
+      var nm=("["+(i+1)+"] "+FUSE[k].name+"          ").slice(0,12);
+      var step=(lit>=4) ? "4/4      " : (lit+"/4 \u2192 "+(lit+1)+"/4");
+      lines.push({t:"  "+nm+step+"   "+fitPreview(k), cls:(lit>=4 ? "saTerm-dim" : "saTerm-menukey"), speed:0});
+    }
+    return lines;
+  }
+  // One fit = one held fuse into one system, applied once and saved straight away.
+  function fitSpare(key){
+    if(typeof ECON==="undefined") return {ok:false, msg:"No market link on this build."};
+    if(!FUSE[key]) return {ok:false, msg:"Unknown system."};
+    if(FUSE[key].lit>=4) return {ok:false, msg:FUSE[key].name+" is already 4/4."};
+    if(ECON.inventory.heldByPlayer<=0) return {ok:false, cls:"saTerm-red", msg:"No spare fuse held. Buy one at [2] BANK \u2192 [M] MARKETS."};
+    var from=FUSE[key].lit, what=fitPreview(key);
+    if(!ECON.installFuse(key)) return {ok:false, msg:"Fit failed."};
+    try{ if(window.saTermSfx) window.saTermSfx.move(); }catch(e){}
+    saveBunkerState();
+    return {ok:true, msg:"Fitted into "+FUSE[key].name+": "+from+"/4 \u2192 "+FUSE[key].lit+"/4 \u00b7 "+what+"."};
+  }
+  function fitSpareStart(){
+    var held=(typeof ECON!=="undefined") ? ECON.inventory.heldByPlayer : 0;
+    if(held<=0){
+      typeLine("No spare fuse held. Buy one at [2] BANK \u2192 [M] MARKETS, then fit it here.", {cls:"saTerm-warn", speed:0})
+        .then(function(){ busy=false; askInput(FUSE_PROMPT, {mode:"fuse", maxlength:2}); });
+      return;
+    }
+    actionPause=true; actionPauseStart=Date.now();   // the same capped reprieve as MOVE (ACTION_PAUSE_CAP_V1)
+    var seq=[{t:"FIT A SPARE FUSE \u2014 you hold "+held+". Pick the system that lost one.", cls:"saTerm-dim", speed:0}].concat(fitChoiceLines());
+    runSeq(seq).then(function(){ busy=false; askInput("FIT INTO [1-6] (X=cancel) >", {mode:"fuseFit", maxlength:2}); });
+  }
+  function onFuseFit(val){
+    var v=(val||"").trim().toUpperCase();
+    hideInput(); busy=true;
+    if(v==="X" || v==="B"){ typeLine("Fit cancelled.", {cls:"saTerm-dim", speed:6}).then(function(){ return wait(120); }).then(fusePanel); return; }
+    function again(msg, cls){
+      typeLine(msg, {cls:cls||"saTerm-warn", speed:0})
+        .then(function(){ busy=false; askInput("FIT INTO [1-6] (X=cancel) >", {mode:"fuseFit", maxlength:2}); });
+    }
+    var key=keyByIndex(parseInt(v,10));
+    if(!key){ again("Enter 1-6 or X."); return; }
+    // Settle the clocks first so the fit applies to the reserve as it is now (same as MOVE).
+    if(clocksArmed && (termActive || bunkerLive)) clockStep();
+    if(deadRun) return;
+    var res=fitSpare(key);
+    if(!res.ok){ again(res.msg, res.cls); return; }
+    // Keep the result readable: it is repeated under the redrawn panel, next to the prompt.
+    panelNote={t:res.msg, cls:"saTerm-bright"};
+    typeLine(res.msg, {cls:"saTerm-bright", speed:0}).then(function(){ return wait(250); }).then(fusePanel);
   }
   // ---- COMMS: aim your sensor channels. Toggle which systems you watch, up to COMMS lit fuses. ----
   function commsAssign(){
@@ -30837,7 +30947,9 @@ var SA_TUT_AVATARS = {
         .then(function(){ busy=false; askInput("MOVE FROM [1-6] (X=cancel) >", {mode:"fuseFrom", maxlength:2}); });
       return;
     }
-    typeLine("Enter M, C or B.", {cls:"saTerm-warn", speed:8}).then(function(){ busy=false; askInput("FUSE PANEL [M / B] >", {mode:"fuse", maxlength:2}); });
+    if(v==="I"){ fitSpareStart(); return; }                    // RENEWABLE_CLOCKS_FIT_V1
+    if(v==="T" && SA_DEV_HOST){ devSkipMenu(); return; }       // RENEWABLE_CLOCKS_DEV_SKIP_V1
+    typeLine("Enter M, I, C or B.", {cls:"saTerm-warn", speed:8}).then(function(){ busy=false; askInput(FUSE_PROMPT, {mode:"fuse", maxlength:2}); });
   }
   function onFuseFrom(val){
     var v=(val||"").trim().toUpperCase();
@@ -30989,6 +31101,7 @@ var SA_TUT_AVATARS = {
     if(!cands.length) return null;
     var key=cands[Math.floor(Math.random()*cands.length)];
     FUSE[key].lit--;
+    logBlow(key, "decay");
     try{ if(typeof ECON!=="undefined") ECON.onFuseBlown(); }catch(e){} // LOCAL_ECONOMY_V1: shared-pool accounting
     if(LETHAL.indexOf(key)>=0) reconcileClock(key);
     if(key==="comms") clampComms();
@@ -31024,7 +31137,13 @@ var SA_TUT_AVATARS = {
   }
   var simSilent=false;   // OFFLINE_DRAIN_V1: true during offline catch-up so a long absence
                          // doesn't replay every blowout as a burst of zaps on return.
-  function blowFuses(n){
+  /* RENEWABLE_CLOCKS_RETURN_REPORT_V1 (2026-11-08): while an absence is replayed, every
+     fuse that fails is written here with its cause, so the return report can say what
+     happened and when. Null outside a replay. */
+  var blowLog = null;
+  var blowCursorTs = 0;      // historical wall-clock ms at the end of the slice being replayed
+  function logBlow(key, cause){ if(blowLog) blowLog.push({key:key, cause:cause, at:blowCursorTs}); }
+  function blowFuses(n, cause){
     var blown=0;
     if(!simSilent){ try{ if(window.saTermSfx) window.saTermSfx.blow(); }catch(e){} } // electrical zap
     // Concentrated damage: drain AIR fully first (the killer), then spill to WATER, then THERMAL.
@@ -31032,6 +31151,7 @@ var SA_TUT_AVATARS = {
       var key=BLOW_ORDER[i];
       while(FUSE[key].lit>0 && blown<n){
         FUSE[key].lit--;
+        logBlow(key, cause||"sabotage");
         try{ if(typeof ECON!=="undefined") ECON.onFuseBlown(); }catch(e){} // LOCAL_ECONOMY_V1
         blown++;
       }
@@ -31242,6 +31362,7 @@ var SA_TUT_AVATARS = {
       }
       // Tiny rounding residuals must not stall the event loop.
       step=Math.min(left,Math.max(step,0.0000001));
+      blowCursorTs=cursorTs+step*wallRate*1000;   // RENEWABLE_CLOCKS_RETURN_REPORT_V1
       died=_advanceOne(step*lifeRate,live,step*wallRate,cursorTs);
       cursorTs+=step*wallRate*1000;
       left=Math.max(0,left-step);
@@ -31285,7 +31406,7 @@ var SA_TUT_AVATARS = {
       var blows=0;
       while(sabotageAccum >= sabInt && blows<20){ sabotageAccum -= sabInt; blows++; }
       if(blows>0){
-        var actuallyBlew = blowFuses(blows); // AIR-first; reconciles + arms clocks; plays zap
+        var actuallyBlew = blowFuses(blows, "sabotage"); // AIR-first; reconciles + arms clocks; plays zap
         if(actuallyBlew>0 && !died){
           // if a blow just emptied a lethal system, mark it dead this tick
           for(var j=0;j<LETHAL.length;j++){ if(FUSE[LETHAL[j]].lit===0 && rem[LETHAL[j]]!==null && rem[LETHAL[j]]<=0){ died=LETHAL[j]; break; } }
@@ -31381,7 +31502,10 @@ var SA_TUT_AVATARS = {
      district, biome, or chip identifier appears in the body. The static-check
      test in tests/local_economy_v1.cjs will fail if that changes. */
   var ECON_SAVE_KEY = "SA_ECON_STATE_V1";
-  var ECON_TOTAL_SUPPLY = 24; // fixed physical fuse count (all states must sum to this)
+  var ECON_TOTAL_SUPPLY = 24; // fuses for sale: the shared market stock (fixed, never refilled)
+  // FUSE_LEDGER_V2 (2026-11-08, audit F5): the 24 fuses that start in the grid (6 systems x 4)
+  // are physical fuses too, so the ledger counts them. Every state sums to stock + grid.
+  var ECON_GRID_FUSES = 24;
 
   // TBD tuning: unplaytested placeholders. Do NOT quote as approved balance.
   var ECON_FUSE_BASE_PRICE   = 100;   // vendor base price per fuse
@@ -31433,13 +31557,15 @@ var SA_TUT_AVATARS = {
       // The FUSE grid's initial 4/4 allocation is treated as the game's baseline
       // state and is NOT double-counted against the stock. Only ECON-driven
       // buys/installs move fuses between availableStock <-> heldByPlayer <-> installed.
+      // FUSE_LEDGER_V2: the grid's 24 starting fuses are counted as installed.
       return {
-        totalSupply: ECON_TOTAL_SUPPLY,
+        totalSupply: ECON_TOTAL_SUPPLY + ECON_GRID_FUSES,
         availableStock: ECON_TOTAL_SUPPLY,
-        installed: 0,
+        installed: ECON_GRID_FUSES,
         heldByPlayer: 0,
         destroyed: 0,
-        purchaseCount: 0 // used to compound the vendor price curve
+        purchaseCount: 0, // used to compound the vendor price curve
+        gridCounted: true // FUSE_LEDGER_V2 marker (older saves counted the shop stock only)
       };
     }
 
@@ -31527,8 +31653,8 @@ var SA_TUT_AVATARS = {
         if(FUSE[system].lit >= 4) return false;
         if(this.inventory.heldByPlayer <= 0) return false;
         this.inventory.heldByPlayer -= 1;
-        this.inventory.installed    += 1;
         FUSE[system].lit += 1;
+        this.syncLedger();   // FUSE_LEDGER_V2: installed mirrors the grid
         if(LETHAL.indexOf(system) >= 0) reconcileClock(system);
         if(system === "comms") refitComms();
         this.log.push({ t: Date.now(), kind:"install", system:system });
@@ -31539,14 +31665,23 @@ var SA_TUT_AVATARS = {
       // DESTROYED (not returned to stock). The lifecycle question is unresolved
       // and this is the conservative choice; a future rule may add a repair path.
       onFuseBlown: function(){
-        if(this.inventory.installed > 0){
-          this.inventory.installed -= 1;
-          this.inventory.destroyed += 1;
-        }
+        this.syncLedger();   // FUSE_LEDGER_V2: a blown grid fuse is destroyed, whoever bought it
+      },
+
+      // FUSE_LEDGER_V2 (2026-11-08): `installed` always equals the fuses lit in the grid, and
+      // whatever is not in stock, held or installed has been destroyed (blown, or spent at
+      // Home). Recomputing from the grid means no path that changes the grid can leave the
+      // ledger out of step. MOVE changes nothing here: it only shifts fuses between systems.
+      syncLedger: function(){
+        var inv=this.inventory, lit=0;
+        for(var k in FUSE){ if(FUSE.hasOwnProperty(k)) lit += FUSE[k].lit; }
+        inv.installed = lit;
+        inv.destroyed = Math.max(0, inv.totalSupply - inv.availableStock - inv.heldByPlayer - lit);
       },
 
       // Persistence hooks. Called from saveBunkerState()/restoreBunkerRun().
       _serialize: function(){
+        this.syncLedger();
         return {
           v: 1,
           wallet: this.wallet,
@@ -31570,7 +31705,15 @@ var SA_TUT_AVATARS = {
             if(vv) vv.claimed = !!s.vaults[j].claimed;
           }
         }
-        if(s.inv) this.inventory = Object.assign(freshInventory(), s.inv);
+        if(s.inv){
+          this.inventory = Object.assign(freshInventory(), s.inv);
+          // FUSE_LEDGER_V2: a save from before the grid was counted holds the shop stock only.
+          if(!s.inv.gridCounted){
+            this.inventory.totalSupply = (s.inv.totalSupply || ECON_TOTAL_SUPPLY) + ECON_GRID_FUSES;
+            this.inventory.gridCounted = true;
+          }
+        }
+        this.syncLedger();
       },
       _reset: function(){
         this.wallet    = freshWallet();
@@ -31714,6 +31857,36 @@ var SA_TUT_AVATARS = {
     return api;
   })();
   /* HOME_NODE_V1_END ==================================================== */
+
+  /* ===== RENEWABLE_CLOCKS_SETTINGS_V1 (2026-11-08) ======================================
+     ONE settings block for every number the renewable-clocks phase adds.
+     Approved by the user (2026-11-08): refresh rule A. Clocks are never bought with coin. A
+     fuse bought at the market and fitted where one blew restores that system's capacity
+     (RENEWABLE_CLOCKS_FIT_V1); it needs no new number.
+     NOT set here because they await the user's approval: market earnings over time, the
+     shop stock size, and the free-pause (F1) / background-tab (F2) fixes.
+     Everything below is dev test tooling, not balance. */
+  var SA_RENEW = {
+    // Dev time-skip steps, as the user listed them: +10m, +1h, +8h, +24h, +3d.
+    DEV_SKIP_STEPS: [
+      {label:"+10m", secs:10*60}, {label:"+1h", secs:3600}, {label:"+8h", secs:8*3600},
+      {label:"+24h", secs:24*3600}, {label:"+3d", secs:3*24*3600}
+    ],
+    // Dev starting grids. The first three have 19 fuses (what is left after the opening
+    // assault) and match the Phase 1 audit's absence matrix. airShare = AIR's share of
+    // its current level's budget.
+    DEV_PRESETS: [
+      {label:"SECURE",   lit:{defense:4, air:4, power:4, water:4, thermal:3, comms:0}, airShare:1},
+      {label:"TYPICAL",  lit:{defense:3, air:3, power:4, water:4, thermal:4, comms:1}, airShare:1},
+      {label:"FRAGILE",  lit:{defense:2, air:2, power:3, water:4, thermal:4, comms:4}, airShare:0.75},
+      {label:"ALL FULL", lit:{defense:4, air:4, power:4, water:4, thermal:4, comms:4}, airShare:1}
+    ]
+  };
+  // Dev tooling only appears on local copies (file:// or localhost), the same gate as the
+  // __saFuse test hook, so the public site never shows it.
+  var SA_DEV_HOST = false;
+  try{ SA_DEV_HOST = (location.protocol==="file:" || /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname)); }catch(e){}
+  /* ===== end RENEWABLE_CLOCKS_SETTINGS_V1 ================================================ */
 
   var OFFLINE_REST_WINDOW_S = 12*3600; // how long the reduced "rest" rate applies
   var OFFLINE_REST_RATE     = 0.35;    // multiplier inside that window
@@ -31860,22 +32033,26 @@ var SA_TUT_AVATARS = {
 
     var gap = Math.max(0, (Date.now()-s.ts)/1000);
     var eff = (!frozen && gap>=OFFLINE_MIN_GAP_S) ? effectiveOfflineSecs(gap) : 0;
-    var died = null;
+    var died = null, blown = [], awayFromTs = Date.now()-gap*1000;
     if(eff>0){
       simSilent=true;                       // catch-up is silent
       // Life support gets the reduced rest rate; sabotage and baseline decay are
       // billed at the FULL wall-clock gap. Leaving DEFENSE at 4/4 is what makes an
       // absence safe from intruders — not the act of leaving.
+      blowLog=[];                           // RENEWABLE_CLOCKS_RETURN_REPORT_V1
       try{ died = advanceOffline(gap); }
-      finally{ simSilent=false; }
+      finally{ simSilent=false; blown=blowLog||[]; blowLog=null; }
     }
     lastTickTs = Date.now();                // the gap is now accounted for — don't let the
                                             // live tick bill it a second time
     awaySecsAtResume = gap;
-    return { away:gap, eff:eff, died:died, frozen:frozen };
+    return { away:gap, eff:eff, died:died, frozen:frozen, blown:blown, fromTs:awayFromTs };
   }
   // Human-readable catch-up report for the resumed screen.
-  function offlineReportLines(res){
+  // RENEWABLE_CLOCKS_RETURN_REPORT_V1: the real report plus, after a dev time-skip only,
+  // a before/after block (devSkipLines() is empty otherwise).
+  function offlineReportLines(res){ return offlineReportCore(res).concat(devSkipLines()); }
+  function offlineReportCore(res){
     var out=[];
     out.push({t:"", instant:true});
     out.push({t:"// SESSION RESTORED — NODE 7 //", cls:"saTerm-amber", speed:26});
@@ -31889,6 +32066,7 @@ var SA_TUT_AVATARS = {
       return out;
     }
     out.push({t:"Drift applied: "+fmtAway(res.eff)+" of system time.", cls:"saTerm-dim", speed:22});
+    out=out.concat(lostFuseLines(res));    // RENEWABLE_CLOCKS_RETURN_REPORT_V1
     var order=["defense","air","power","water","thermal","comms"];
     for(var i=0;i<order.length;i++){
       var key=order[i], lit=FUSE[key].lit;
@@ -31901,7 +32079,177 @@ var SA_TUT_AVATARS = {
       else { label = liveLabel(key); }   // air/water/thermal countdowns + DEFENSE sabotage rate
       out.push({t:"  "+(FUSE[key].name+"          ").slice(0,12)+lit+"/4   "+label, cls:cls, speed:14});
     }
+    return out.concat(replacementLines());  // RENEWABLE_CLOCKS_RETURN_REPORT_V1
+  }
+  // Which fuses failed during the absence, why, and when (from the replay's blow log).
+  function lostFuseLines(res){
+    var lost=(res && res.blown) || [], out=[];
+    if(!lost.length){ out.push({t:"No fuses failed while you were away.", cls:"saTerm-dim", speed:22}); return out; }
+    out.push({t:"Fuses lost while you were away: "+lost.length, cls:"saTerm-warn", speed:22});
+    var shown=Math.min(lost.length, 6);
+    for(var i=0;i<shown;i++){
+      var b=lost[i], after=Math.max(0, (b.at-res.fromTs)/1000);
+      out.push({t:"  - "+FUSE[b.key].name+" "+(b.cause==="sabotage"?"sabotaged":"burned out")+", "+fmtAway(after)+" after you left", cls:"saTerm-dim", speed:14});
+    }
+    if(lost.length>shown) out.push({t:"  ...and "+(lost.length-shown)+" more.", cls:"saTerm-dim", speed:14});
     return out;
+  }
+  // How to recover under refresh rule A: buy a fuse at the market, fit it where one blew.
+  function replacementLines(){
+    var out=[];
+    if(typeof ECON==="undefined") return out;
+    var inv=ECON.inventory, q=ECON.quote("USA");   // one price across every vendor
+    var payable=ECON.markets.filter(function(m){ return (ECON.wallet[m.currency]||0) >= q.price; })
+                            .map(function(m){ return m.currency; });
+    var missing=0; for(var i=0;i<FUSE_ORDER.length;i++){ missing += 4-FUSE[FUSE_ORDER[i]].lit; }
+    out.push({t:"-------------------------------------------------", cls:"saTerm-dim", instant:true});
+    out.push({t:"Spare fuses held: "+inv.heldByPlayer+".  Market stock: "+inv.availableStock+".", cls:"saTerm-dim", speed:14});
+    if(inv.availableStock<=0){
+      out.push({t:"The markets have no fuses left to sell.", cls:"saTerm-red", speed:14});
+    } else {
+      out.push({t:"Next fuse costs "+fmtMoney(q.price)+" in the seller's currency. "+
+        (payable.length ? ("You can pay in "+payable.join(", ")+".") : "You can't afford one yet."),
+        cls: payable.length ? "saTerm-dim" : "saTerm-warn", speed:14});
+    }
+    if(missing>0){
+      out.push({t:"To replace a blown fuse: buy at [2] BANK \u2192 [M] MARKETS, then fit it", cls:"saTerm-menukey", speed:14});
+      out.push({t:"with [I] on the FUSE PANEL.", cls:"saTerm-menukey", speed:14});
+    }
+    var soon=soonestVisibleFailure();
+    if(soon) out.push({t:"Soonest failure you can see: "+FUSE[soon.key].name+" in "+fmtDur(soon.secs)+".",
+      cls: soon.secs<6*3600 ? "saTerm-red" : "saTerm-warn", speed:14});
+    return out;
+  }
+
+  /* RENEWABLE_CLOCKS_DEV_SKIP_V1 (2026-11-08): hidden dev time-skip for local copies. It
+     saves the run, back-dates the save by the chosen time (as if the tab had been closed for
+     that long), then reopens the bunker through resumeRun(), the exact path a real return
+     takes. So the catch-up is the same chronological replay (life support at 0.35x for the
+     first 12 h, then 1.0x; decay and sabotage at full rate) and the report is the real one,
+     plus a before/after block. Nothing here runs on the public site (SA_DEV_HOST). */
+  var devSkipBefore = null;   // {label, snap} between a dev skip and its report
+  function devSnapshot(){
+    var s={lit:{}, left:{}, held:0, destroyed:0};
+    for(var i=0;i<FUSE_ORDER.length;i++){ var k=FUSE_ORDER[i]; s.lit[k]=FUSE[k].lit; }
+    for(var j=0;j<LETHAL.length;j++){ s.left[LETHAL[j]]=clockLeft(LETHAL[j]); }
+    if(typeof ECON!=="undefined"){ ECON.syncLedger(); s.held=ECON.inventory.heldByPlayer; s.destroyed=ECON.inventory.destroyed; }
+    return s;
+  }
+  function devSkipLines(){
+    if(!devSkipBefore) return [];
+    var b=devSkipBefore; devSkipBefore=null;
+    var a=devSnapshot();
+    function cell(snap, k){   // "3/4 1d 23h"; "—" = no drain, as in the report grid
+      var t=snap.lit[k]+"/4";
+      if(k in snap.left) t+=" "+(snap.left[k]===null ? "\u2014" : fmtDur(snap.left[k]));
+      return t;
+    }
+    var out=[
+      {t:"-------------------------------------------------", cls:"saTerm-dim", instant:true},
+      {t:"DEV TIME-SKIP "+b.label+" \u2014 before \u2192 after", cls:"saTerm-amber", speed:0}
+    ];
+    for(var i=0;i<FUSE_ORDER.length;i++){
+      var k=FUSE_ORDER[i];
+      // Kept to ~36 characters so it fits a phone-width terminal without wrapping.
+      out.push({t:"  "+(FUSE[k].name+"        ").slice(0,8)+(cell(b.snap,k)+"            ").slice(0,12)+"\u2192 "+cell(a,k), cls:"saTerm-dim", speed:0});
+    }
+    out.push({t:"  Fuses destroyed "+b.snap.destroyed+" \u2192 "+a.destroyed+" \u00b7 held "+b.snap.held+" \u2192 "+a.held, cls:"saTerm-dim", speed:0});
+    return out;
+  }
+  // Back-date every absolute timestamp in the saved run by `secs`.
+  function shiftSavedClock(secs){
+    var ms=secs*1000;
+    try{
+      var raw=localStorage.getItem(SAVE_KEY); if(!raw) return false;
+      var s=JSON.parse(raw); if(!s || !s.ts) return false;
+      s.ts-=ms; localStorage.setItem(SAVE_KEY, JSON.stringify(s));
+      var hraw=localStorage.getItem("SA_HOME_STATE_V1");
+      if(hraw){
+        var hs=JSON.parse(hraw);
+        if(hs && typeof hs.startedAt==="number"){ hs.startedAt-=ms; localStorage.setItem("SA_HOME_STATE_V1", JSON.stringify(hs)); }
+      }
+      return true;
+    }catch(e){ return false; }
+  }
+  function devTimeSkip(secs, label){
+    if(!SA_DEV_HOST || !(secs>0)) return false;
+    if(clocksArmed && (termActive || bunkerLive)) clockStep();   // bill live time up to now
+    if(deadRun || !runIsPersistable()) return false;
+    devSkipBefore={label:(label||fmtAway(secs)), snap:devSnapshot()};
+    saveBunkerState();                       // what pagehide writes when the tab closes
+    if(!shiftSavedClock(secs)){ devSkipBefore=null; return false; }
+    if(clockTick){ clearInterval(clockTick); clockTick=null; }   // the tab is "closed": no live tick
+    clocksArmed=false; fusePanelOpen=false; actionPause=false;
+    resumeRun();                             // the real return path
+    if(deadRun) devSkipBefore=null;          // death screen instead of a report
+    return true;
+  }
+  function devSkipPrompt(){
+    var n=SA_RENEW.DEV_SKIP_STEPS.length;
+    busy=false; askInput("SKIP [1-"+n+" / P / B] >", {mode:"devSkip", maxlength:2});
+  }
+  function devSkipMenu(){
+    var steps=SA_RENEW.DEV_SKIP_STEPS, keys=[];
+    for(var i=0;i<steps.length;i++) keys.push("["+(i+1)+"] "+steps[i].label);
+    var seq=[
+      {t:"", instant:true},
+      {t:"// DEV TIME-SKIP \u2014 LOCAL COPIES ONLY //", cls:"saTerm-amber", speed:0},
+      {t:"Saves, closes the bunker and reopens it later, through the same", cls:"saTerm-dim", speed:0},
+      {t:"catch-up and return report as a real absence.", cls:"saTerm-dim", speed:0},
+      {t:"  "+keys.join("  "), cls:"saTerm-menukey", speed:0},
+      {t:"  [P] STARTING FUSES   [B] BACK", cls:"saTerm-menukey", speed:0}
+    ];
+    runSeq(seq).then(devSkipPrompt);
+  }
+  function onDevSkip(val){
+    var v=(val||"").trim().toUpperCase();
+    hideInput(); busy=true;
+    if(v==="B"){ fusePanel(); return; }
+    if(v==="P"){ devPresetMenu(); return; }
+    var st=SA_RENEW.DEV_SKIP_STEPS[parseInt(v,10)-1];
+    if(!st){ typeLine("Enter 1-"+SA_RENEW.DEV_SKIP_STEPS.length+", P or B.", {cls:"saTerm-warn", speed:0}).then(devSkipPrompt); return; }
+    if(!devTimeSkip(st.secs, st.label)){
+      typeLine("Nothing to skip yet: the run starts with the opening assault.", {cls:"saTerm-warn", speed:0}).then(devSkipPrompt);
+    }
+  }
+  function devPresetMenu(){
+    var ps=SA_RENEW.DEV_PRESETS, seq=[{t:"STARTING FUSES (dev): pick a grid, then skip time.", cls:"saTerm-dim", speed:0}];
+    for(var i=0;i<ps.length;i++){
+      var p=ps[i], d=[];
+      for(var j=0;j<FUSE_ORDER.length;j++){ var k=FUSE_ORDER[j]; d.push(FUSE[k].name.slice(0,3)+" "+p.lit[k]); }
+      seq.push({t:"  ["+(i+1)+"] "+(p.label+"         ").slice(0,9)+d.join(" \u00b7 "), cls:"saTerm-menukey", speed:0});
+    }
+    seq.push({t:"  [B] BACK", cls:"saTerm-menukey", speed:0});
+    runSeq(seq).then(function(){ busy=false; askInput("PRESET [1-"+ps.length+" / B] >", {mode:"devPreset", maxlength:2}); });
+  }
+  function onDevPreset(val){
+    var v=(val||"").trim().toUpperCase();
+    hideInput(); busy=true;
+    if(v==="B"){ devSkipMenu(); return; }
+    var p=SA_RENEW.DEV_PRESETS[parseInt(v,10)-1];
+    if(!p){
+      typeLine("Enter 1-"+SA_RENEW.DEV_PRESETS.length+" or B.", {cls:"saTerm-warn", speed:0})
+        .then(function(){ busy=false; askInput("PRESET [1-"+SA_RENEW.DEV_PRESETS.length+" / B] >", {mode:"devPreset", maxlength:2}); });
+      return;
+    }
+    applyDevPreset(p);
+    typeLine("Grid set to "+p.label+".", {cls:"saTerm-bright", speed:0}).then(function(){ return wait(150); }).then(fusePanel);
+  }
+  function applyDevPreset(p){
+    if(!SA_DEV_HOST || !p) return false;
+    for(var k in p.lit){ if(FUSE[k]) FUSE[k].lit=p.lit[k]; }
+    rem={air:null, water:null, thermal:null, defense:null};
+    lastLit={air:4, water:4, thermal:4, defense:4};
+    reserve={air:1, water:1, thermal:1};
+    critBeeped={air:false, water:false, thermal:false, defense:false};
+    reconcileAll();
+    if(rem.air!==null) rem.air=CLOCK_MIN.air[FUSE.air.lit]*((p.airShare==null) ? 1 : p.airShare);
+    sabotageAccum=0; baselineAccum=0;
+    commsWatch={defense:true, air:true, water:true, thermal:true}; clampComms();
+    openingApplied=true; fuseTriggerFired=true;
+    if(typeof ECON!=="undefined") ECON.syncLedger();
+    armClocks(); saveBunkerState();
+    return true;
   }
 
   // Save on the way out. pagehide is the reliable one on mobile; the others are belt-and-braces.
@@ -33017,6 +33365,7 @@ var SA_TUT_AVATARS = {
     if(v==="Y"){
       var q = ECON.quote(m.id);
       var ok = ECON.buyFuse(m.id);
+      if(ok) saveBunkerState();   // RENEWABLE_CLOCKS_FIT_V1: a purchase is saved straight away
       if(ok){
         typeLine("Purchased 1 fuse for "+fmtMoney(q.price)+" "+m.currency+". Held: "+ECON.inventory.heldByPlayer, {cls:"saTerm-bright", speed:0})
           .then(function(){ return wait(200); }).then(marketDetail);
@@ -33035,7 +33384,7 @@ var SA_TUT_AVATARS = {
           .then(function(){ return wait(200); }).then(marketDetail);
         return;
       }
-      typeLine("Install into which system? [1] air  [2] water  [3] thermal  [4] defense  [5] power  [6] comms", {cls:"saTerm-dim", speed:0})
+      runSeq([{t:"Fit a held fuse into which system? You hold "+ECON.inventory.heldByPlayer+".", cls:"saTerm-dim", speed:0}].concat(fitChoiceLines()))
         .then(function(){ busy=false; askInput("INSTALL [1-6] > ", {mode:"marketInstall", maxlength:2}); });
       return;
     }
@@ -33058,7 +33407,9 @@ var SA_TUT_AVATARS = {
       .then(function(){ return wait(200); }).then(marketDetail);
   }
 
-  var INSTALL_KEY_MAP = {"1":"air","2":"water","3":"thermal","4":"defense","5":"power","6":"comms"};
+  // RENEWABLE_CLOCKS_FIT_V1: the same numbering as the FUSE PANEL (FUSE_ORDER), so [1] is
+  // DEFENSE and [2] is AIR on both screens, and the same fit action with its preview.
+  var INSTALL_KEY_MAP = {"1":"defense","2":"air","3":"power","4":"water","5":"thermal","6":"comms"};
   function onMarketInstall(val){
     hideInput(); busy=true;
     var key = INSTALL_KEY_MAP[(val||"").trim()];
@@ -33067,17 +33418,11 @@ var SA_TUT_AVATARS = {
         .then(function(){ return wait(150); }).then(marketDetail);
       return;
     }
-    var ok = ECON.installFuse(key);
-    if(ok){
-      typeLine("Installed into "+key.toUpperCase()+". Now at "+FUSE[key].lit+"/4.", {cls:"saTerm-bright", speed:0})
-        .then(function(){ return wait(200); }).then(marketDetail);
-    } else if(FUSE[key] && FUSE[key].lit>=4){
-      typeLine("That system is already 4/4.", {cls:"saTerm-warn", speed:0})
-        .then(function(){ return wait(200); }).then(marketDetail);
-    } else {
-      typeLine("Install failed.", {cls:"saTerm-warn", speed:0})
-        .then(function(){ return wait(200); }).then(marketDetail);
-    }
+    if(clocksArmed && (termActive || bunkerLive)) clockStep();   // settle time first, like MOVE
+    if(deadRun) return;
+    var res = fitSpare(key);
+    typeLine(res.msg, {cls: res.ok ? "saTerm-bright" : (res.cls||"saTerm-warn"), speed:0})
+      .then(function(){ return wait(200); }).then(marketDetail);
   }
 
   // Vault seed selection: pick a vault, then enter the password.
@@ -33879,6 +34224,10 @@ var SA_TUT_AVATARS = {
       var _emergencyTimeout = setTimeout(function(){ emergencyRender = false; }, 5000);
       typeLine("// EMERGENCY \u2014 SYSTEMS CRITICAL // Away "+fmtAway(res.away)+". Rescue now.",
         {cls:"saTerm-red", speed:0});
+      // RENEWABLE_CLOCKS_DEV_SKIP_V1: after a dev time-skip, keep the before/after block on screen.
+      var _devLines=devSkipLines();
+      for(var dl=0;dl<_devLines.length;dl++){ typeLine(_devLines[dl].t, {cls:_devLines[dl].cls, speed:0}); }
+      if(_devLines.length) skipClearOnce=true;
       fusePanel().then(function(){
         clearTimeout(_emergencyTimeout);
         emergencyRender = false;
@@ -34326,6 +34675,9 @@ var SA_TUT_AVATARS = {
       else if(mode==="commsAssign") onCommsAssign(v);
       else if(mode==="fuseFrom") onFuseFrom(v);
       else if(mode==="fuseTo") onFuseTo(v);
+      else if(mode==="fuseFit") onFuseFit(v);
+      else if(mode==="devSkip") onDevSkip(v);
+      else if(mode==="devPreset") onDevPreset(v);
       else if(mode==="defenseAll") onDefenseAll(v);
       else if(mode==="defense") onDefense(v);
       else if(mode==="aegis") onAegis(v);
