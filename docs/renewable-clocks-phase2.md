@@ -2,7 +2,7 @@
 
 Development build only (`v8.90-dev`, branch `feat/renewable-clocks-phase2`, draft PR #8). Nothing here is live. The public site stays on `release/terminal-pacing-2026-10-03` at `18e4ffa` until you say yes.
 
-Part 1 (commit `e0d9942`) added the approved refresh rule A, the return report, the fuse ledger fix and the dev time-skip. Part 2 makes the build fair and fun to play-test: markets earn over time, every currency can buy fuses, and the known loopholes from the Phase 1 audit are closed. Part 3 turns the Bank into one board you can click or tap, and makes every menu option clickable.
+Part 1 (commit `e0d9942`) added the approved refresh rule A, the return report, the fuse ledger fix and the dev time-skip. Part 2 makes the build fair and fun to play-test: markets earn over time, every currency can buy fuses, and the known loopholes from the Phase 1 audit are closed. Part 3 turns the Bank into one board you can click or tap, and makes every menu option clickable. Part 4 makes that board live: earnings count up in real time, each market shows a meter and countdown to its next fuse, and the soonest failure counts down.
 
 ## Play-test link
 
@@ -17,7 +17,7 @@ The play-test link serves this branch straight from GitHub through raw.githack.c
 **A quick test run** (click or tap everything; typing the keys still works):
 
 1. Click the war-room picture to enter the bunker and play the opening.
-2. Open `[2] BANK`. Every market is on one board. Pick 25%, 50% or ALL, then INVEST on a market.
+2. Open `[2] BANK`. Every market is on one board. Pick 25%, 50% or ALL, then INVEST on a market. Its `ready` number starts counting up and its FUSE countdown starts ticking.
 3. BUY FUSE on a market, then pick the system to fit it into, or KEEP AS SPARE.
 4. Go to `[6] NETWORK → [1] LOCAL → [F]` (FUSE PANEL). Press `[T]` and skip `+24h`.
 5. Read the return report, then `[M] BANK`. COLLECT ALL, then REINVEST ALL or PAY OUT ALL.
@@ -93,6 +93,45 @@ You said the Bank felt like friction: a long ledger first, four screens deep, ty
 
 Technical detail: the board checks for changes once a second and only redraws when something changed, never while a finger or mouse button is down.
 
+## Live board (part 4)
+
+You asked for a real-time clock like the AdVenture games, so you can watch your investments move. While the Bank board is open, three things now move in real time:
+
+- **Ready to collect counts up.** The cents you can collect are bright. A few dim digits after them keep moving when a small stake is too slow to move the cents, like the AdVenture Capitalist cash ticker.
+- **Each market has a FUSE meter and countdown.** The meter fills with your wallet plus earnings in that currency, against today's fuse price. The countdown is the real time until you can afford the next fuse, for example `2d 00:26:03`. Instead of a countdown it can say `READY · buy it now` (the wallet covers it), `READY · pay out first` (wallet plus earnings cover it), `SOLD OUT` or `invest to earn one`.
+- **The soonest failure you can see** sits under the FUSES line and counts down every second, for example `AIR in 01:08:36`. It follows COMMS: no sensor, no countdown.
+
+To see it: open `[2] BANK` and INVEST on any market, then watch its `ready` number and countdown. Skip `+24h` with `[T]` on the FUSE PANEL and come back to see a day of earnings and the meter about half full.
+
+**Why (what the AdVenture games do):**
+
+| Idea | Where it comes from |
+|---|---|
+| Every business runs its own timer and pays when it runs out | AdVenture Capitalist: "Clicking on a business, starts a timer; when the timer runs out, it makes the listed amount of money." Cycles run from 0.6 s (Lemonade) to over 10 hours (Oil) ([AdCap wiki](https://adventure-capitalist.fandom.com/wiki/Businesses)). AdVenture Communist works the same way ([Steam discussion](https://steamcommunity.com/app/462930/discussions/0/135511655652082701/?l=czech)) |
+| Show income per second once a bar is too fast to read | Players say cash per second is "only really useful when the bar moves so fast that you can't see the time" ([Steam discussion](https://steamcommunity.com/app/346900/discussions/0/618459405707832475/?l=czech)). Revenue per second is revenue per cycle divided by cycle time ([Frame Advance](https://frameadvance.net/games/adventure-capitalist/)) |
+| Keep earning while away | AdCap managers "automatically start a profit cycle after one ends, even if the player is disconnected from the game" ([AdCap wiki](https://adventure-capitalist.fandom.com/wiki/Managers)) |
+| Show the time to the next goal | "Players feel the interval, not the magnitude" ([gamedesign.gg](https://gamedesign.gg/articles/idle-and-incremental-game-design/)). The Cookie Clicker add-on CookieMaster shows the time left until things are affordable ([CookieMaster](https://github.com/greenc/CookieMaster)) |
+| A balance that visibly grows every second | Aave's lending app: "Your balance grows every second" ([Aave](https://aave.com/app)) |
+
+What I didn't copy: AdCap's lump payout at the end of each timer. Your markets earn smoothly under the 22% a day proposal, so a lump timer would be a new rule. The countdown to the next fuse gives the same "something is coming" feeling without a new number.
+
+**Fairness kept:**
+
+- The moving numbers are display only. The real tick still runs once a second, and the display never runs more than one second ahead of it.
+- COLLECT, REINVEST, PAY OUT, the ALL buttons and FIT first bring the clock up to the moment you tap. You get exactly what the board shows, never more and never less.
+- Nothing moves while Single Player has the bunker frozen, after death, or while the game is paused.
+- Opening, leaving or watching the board adds no clock time.
+
+**Fix: the live tick stopped after a reload with every system full.** If every system was full when you reloaded, the once-a-second tick didn't restart. Markets didn't earn and wear-out didn't count while the tab stayed open, and that time was never billed later. That broke the locked rule that obligations run at full rate. The tick now always restarts after a reload (`RESUME_ALWAYS_TICKS_V1`). No number changed.
+
+**One UI proposal** (in `SA_RENEW`, for you to approve; not a balance number):
+
+| Setting | Proposal | Why |
+|---|---|---|
+| `LIVE_DECIMALS_MAX` | 6 | The most decimal places the `ready` counter shows. Even a tiny stake visibly moves, and the cents always stay bright |
+
+Technical detail: the moving numbers are driven by the browser's animation frame (`requestAnimationFrame`). Browsers pause it in a background tab ([MDN](https://developer.mozilla.org/en-US/docs/Web/API/Window/requestAnimationFrame)), so a hidden tab costs nothing, and rule F2 still bills that time when you come back. They only change text and bar widths. The board itself still redraws at most once a second, and only when a button or label changes, so a tap is never lost to a redraw.
+
 ## Fixes (no new numbers)
 
 - **F1, door choice saved.** An Idle run stays Idle after a reload. `[5] PROCEED` is no longer offered, so a reload can't be used to take the Single Player door and pause the bunker for free. Single Player runs keep their route back.
@@ -150,12 +189,13 @@ Then open http://localhost:8000/.
 
 ## Tests
 
-- `npm test` runs 8 suites with 156 checks. All pass.
+- `npm test` runs 8 suites with 166 checks. All pass.
   - `tests/renewable_clocks_phase2.cjs` (19): rule A, the return report, the ledger and the time-skip.
   - `tests/playtest_balance_v1.cjs` (19): no instant profit; live, closed-tab and skipped time earn the same; nothing earned while frozen; collect and payout; earnings survive a reload; every currency can buy; 32 in stock; F1; F2 (8-hour hide, short hide, hunt); the sabotage share; the day count; the report's market and COMMS lines.
-  - `tests/bank_board_v1.cjs` (22): tap-to-choose and the double-tap guard; the board (every market, the invest toggle, collect, collect all, buy and fit, keep as spare, prices you can't afford); a stale fit button can't fit a second fuse; taps and repeats add no clock time; the return shortcuts and the password gate.
+  - `tests/bank_board_v1.cjs` (32): tap-to-choose and the double-tap guard; the board (every market, the invest toggle, collect, collect all, buy and fit, keep as spare, prices you can't afford); a stale fit button can't fit a second fuse; taps and repeats add no clock time; the return shortcuts and the password gate. Part 4 adds: the live counter matches the next tick exactly and never runs more than 1 s ahead; how many digits it shows; a collect pays exactly what the board shows; the meter and countdown; the READY, pay out first, SOLD OUT and invest to earn one labels; the clock format; the failure line follows COMMS and counts down; nothing moves while frozen; moving numbers never redraw the board; a reload with every system full keeps the tick running.
+  - Mutation check: undoing the reload fix, the settle-before-collect or the one-second limit each makes a test fail.
 - **Browser check** (Chromium, desktop 1280 px and phone 390 px): the return report, investing, buying, fitting, a +24h skip with earnings, collect and payout, a 25-second hidden tab, the markets list and the death mail. No page errors and no text running off the screen.
-- **Bank board browser check** (desktop with the mouse only, phone with touch taps): report → `[M] BANK` → 50% → INVEST → BUY FUSE → fit AIR → BACK → FUSE PANEL → `[T]` +24h → `[M] BANK` → COLLECT ALL → PAY OUT ALL, then the INVEST buttons on the full market screen. Buttons are at least 44 px tall on the phone, the keyboard stays down on choice screens, nothing runs off the screen, no page errors.
+- **Bank board browser check** (desktop with the mouse only, phone with touch taps): report → `[M] BANK` → 50% → INVEST → BUY FUSE → fit AIR → BACK → FUSE PANEL → `[T]` +24h → `[M] BANK` → COLLECT ALL → PAY OUT ALL, then the INVEST buttons on the full market screen. Buttons are at least 44 px tall on the phone, the keyboard stays down on choice screens, nothing runs off the screen, no page errors. Part 4: the `ready` counter rises within 1.6 s of investing, and the fuse countdown and the failure line tick every second, on desktop and phone.
 
 ## Rollback
 

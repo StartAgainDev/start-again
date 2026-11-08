@@ -9,6 +9,9 @@
 //   - MARKETS_BOARD_V1: one Bank screen with every market and live earnings, COLLECT (which
 //     still asks REINVEST or PAY OUT), COLLECT ALL, the invest toggle, BUY FUSE and fit-now
 //   - RETURN_QUICK_ACTIONS_V1: after the return report, one tap to the Bank or FUSE PANEL
+//   - LIVE_MARKETS_V1: earnings count up in real time, a meter and countdown run to the next
+//     fuse, a live soonest-failure line; a collect pays exactly what the board shows
+//   - RESUME_ALWAYS_TICKS_V1: a reload with every system full keeps the live tick running
 //   - no tap, repeat or screen change ever adds clock time
 // The invest toggle steps and the double-tap guard come from the settings block; they are
 // UI proposals, not balance numbers.
@@ -516,9 +519,137 @@ test('the board numbers update live while it is open, but never mid-tap', () => 
   eq(boardHtml(h), before, 'no redraw while a finger is down');
   h.advance(3500);
   h.ev('boardTick()');
-  assert(boardHtml(h).includes('ready ' + fmt(h, 220) + ' USD'), 'a day of earnings shows (a stuck press frees itself)');
+  assert(boardHtml(h).includes('<b>220.00</b>'), 'a day of earnings shows (a stuck press frees itself)');
   h.ev('leaveBoard("B")');
   eq(h.ev('board.timer'), null, 'leaving the board stops its timer');
+});
+
+// ---------- LIVE_MARKETS_V1 ----------------------------------------------------
+test('earnings count up between ticks, exactly as the next tick credits them', () => {
+  const h = makeHarness();
+  liveRun(h, FULL);
+  h.ev('ECON.marketById("USA").position = 125; ECON.marketById("USA").earned = 0; lastTickTs = Date.now();');
+  h.advance(400);
+  const shown = h.ev('liveEarned(ECON.marketById("USA"))');
+  near(shown, 125 * 0.22 * 0.4 / 86400, 'the counter moves before the tick', 1e-12);
+  h.ev('clockStep()');
+  near(h.ev('ECON.marketById("USA").earned'), shown, 'the tick credits exactly what was shown', 1e-12);
+  h.advance(5000);
+  near(h.ev('liveEarned(ECON.marketById("USA"))'), shown + 125 * 0.22 / 86400, 'never carried forward more than one second', 1e-12);
+});
+
+test('the counter shows the cents you can collect, then just enough finer digits', () => {
+  const h = makeHarness();
+  liveRun(h, FULL);
+  const parts = (pos, earned) => h.ev(`(function(){ var m=ECON.marketById("USA"); m.position=${pos}; m.earned=${earned}; lastTickTs=Date.now(); return JSON.stringify(readyParts(m)); })()`);
+  eq(parts(125, 0.3841736), JSON.stringify({ bright: '0.38', dim: '41' }), '125 USD earns about 0.0003 a second: 4 places');
+  eq(parts(100000, 1234.5678), JSON.stringify({ bright: '1,234.56', dim: '' }), 'a big stake moves the cents every second: no extra digits');
+  eq(parts(0.01, 0.0000123), JSON.stringify({ bright: '0.00', dim: '0012' }), 'a tiny stake stops at LIVE_DECIMALS_MAX (6)');
+  eq(parts(0, 0.5), JSON.stringify({ bright: '0.50', dim: '' }), 'nothing invested: just the cents');
+});
+
+test('a collect pays exactly what the board shows', () => {
+  const h = makeHarness();
+  liveRun(h, FULL);
+  h.ev('ECON.wallet.USD = 0; ECON.marketById("USA").position = 1000; ECON.marketById("USA").earned = 0.0099; lastTickTs = Date.now(); openBoard();');
+  h.advance(1000);
+  eq(h.ev('readyParts(ECON.marketById("USA")).bright'), '0.01', 'the board shows a cent arriving between ticks');
+  eq(h.ev('ECON.ready("USA")'), 0, 'not credited yet');
+  h.ev('boardAct("collect", "USA")');
+  eq(mode(h), 'boardAsk', 'COLLECT settles the time first, so that cent is there to collect');
+  h.ev('boardAct("payout", "USA")');
+  near(wallet(h).USD, 0.01, 'and it pays out', 1e-9);
+});
+
+test('the fuse meter and countdown: wallet plus earnings against the live price', () => {
+  const h = makeHarness();
+  liveRun(h, FULL);
+  const race = () => JSON.parse(h.ev('JSON.stringify(fuseRace(ECON.marketById("USA")))'));
+  h.ev('ECON.wallet.USD = 25; ECON.marketById("USA").position = 125; ECON.marketById("USA").earned = 27.5; lastTickTs = Date.now();');
+  const price = h.ev('ECON.quote("USA").price');
+  const rc = race();
+  eq(rc.state, 'eta', 'counting down');
+  near(rc.frac, 52.5 / price, 'the meter is wallet plus earnings over the price');
+  near(rc.secs, (price - 52.5) / (125 * 0.22 / 86400), 'the countdown is what is missing over the earning rate', 1e-6);
+  eq(h.ev('raceText(fuseRace(ECON.marketById("USA")))'), h.ev(`fmtClock(${rc.secs})`), 'shown as a ticking clock');
+  h.ev('ECON.collect("USA", "payout")');
+  near(race().frac, rc.frac, 'paying out only changes pocket, so the meter stays put', 1e-9);
+  h.ev('ECON.wallet.USD = 25; ECON.marketById("USA").position = 125; ECON.marketById("USA").earned = 27.5;');
+  h.ev('ECON.collect("USA", "reinvest")');
+  assert(race().secs > rc.secs, 'reinvesting puts the next fuse further off, while it all earns more: the real choice, shown');
+});
+
+test('READY, pay out first, SOLD OUT and invest to earn one', () => {
+  const h = makeHarness();
+  liveRun(h, FULL);
+  const race = () => h.ev('raceText(fuseRace(ECON.marketById("USA")))');
+  const price = h.ev('ECON.quote("USA").price');
+  h.ev(`ECON.wallet.USD = ${price}; ECON.marketById("USA").position = 0; ECON.marketById("USA").earned = 0; lastTickTs = Date.now();`);
+  eq(race(), 'READY \u00b7 buy it now', 'the wallet covers a fuse');
+  h.ev(`ECON.wallet.USD = ${price} - 1; ECON.marketById("USA").position = 10; ECON.marketById("USA").earned = 2;`);
+  eq(race(), 'READY \u00b7 pay out first', 'wallet plus earnings cover it');
+  h.ev('ECON.wallet.USD = 0; ECON.marketById("USA").position = 0; ECON.marketById("USA").earned = 0;');
+  eq(race(), 'invest to earn one', 'nothing invested and nothing in the wallet');
+  h.ev('ECON.inventory.availableStock = 0;');
+  eq(race(), 'SOLD OUT', 'no fuses left for sale');
+});
+
+test('the countdown reads like a clock', () => {
+  const h = makeHarness();
+  const c = x => h.ev(`fmtClock(${x})`);
+  eq(c(0), '00:00:00', 'zero');
+  eq(c(0.2), '00:00:01', 'part of a second rounds up, so it never shows 0 too early');
+  eq(c(59), '00:00:59', 'seconds');
+  eq(c(3600), '01:00:00', 'an hour');
+  eq(c(90061), '1d 01:01:01', 'past a day');
+});
+
+test('the board shows the soonest failure COMMS can see, counting down between ticks', () => {
+  const h = makeHarness();
+  liveRun(h, { defense: 4, air: 3, power: 4, water: 4, thermal: 4, comms: 4 });
+  h.ev('lastTickTs = Date.now();');
+  const left = h.ev('clockLeft("air")');
+  eq(h.ev('failText()'), 'Soonest failure you can see: AIR\u00a0in\u00a0' + h.ev(`fmtClock(${left})`), 'AIR is watched ("AIR in 04:20:13" never splits across lines)');
+  h.advance(600);
+  near(h.ev('liveFailure().secs'), left - 0.6, 'it counts down between ticks', 1e-6);
+  h.ev('commsWatch.air = false;');
+  eq(h.ev('failText()'), '', 'no sensor on AIR, no countdown (COMMS only changes what you see)');
+  h.ev('openBoard()');
+  assert(boardHtml(h).includes('data-live="fail" style="display:none"'), 'the line is hidden');
+});
+
+test('nothing moves while the bunker is frozen', () => {
+  const h = makeHarness();
+  liveRun(h, { defense: 4, air: 3, power: 4, water: 4, thermal: 4, comms: 4 });
+  h.ev('ECON.marketById("USA").position = 1000; lastTickTs = Date.now(); freezeBunker();');
+  const a = h.ev('JSON.stringify([readyParts(ECON.marketById("USA")), liveFailure()])');
+  h.advance(900);
+  eq(h.ev('JSON.stringify([readyParts(ECON.marketById("USA")), liveFailure()])'), a, 'frozen: the counter and the countdown stand still');
+});
+
+test('the board redraws only when more than the moving numbers change', () => {
+  const h = makeHarness();
+  liveRun(h, FULL);
+  h.ev('ECON.marketById("USA").position = 125; ECON.marketById("USA").earned = 0.001; openBoard();');
+  const last = h.ev('board.last');
+  h.ev('ECON.accrue(10); boardTick();');
+  eq(h.ev('board.last'), last, '10 s of earnings changes only the moving numbers: no redraw');
+  h.ev('ECON.accrue(86400); boardTick();');
+  assert(h.ev('board.last') !== last, 'a cent ready lights up COLLECT: that is a redraw');
+});
+
+// ---------- RESUME_ALWAYS_TICKS_V1 --------------------------------------------
+test('a reload with every system full keeps the live tick running', () => {
+  const h = makeHarness();
+  liveRun(h, FULL, 'ECON.marketById("USA").position = 1000;');
+  const b = makeHarness({ ...h.storage }, { now: h.now() + 60 * 1000 });
+  b.ev('resumeRun()');
+  eq(b.ev('clocksArmed'), true, 'the live tick runs after a reload, even with every system full');
+  const e0 = b.ev('ECON.marketById("USA").earned'), w0 = b.ev('baselineAccum');
+  b.advance(10 * 1000);
+  b.ev('clockStep()');
+  near(b.ev('ECON.marketById("USA").earned') - e0, 1000 * 0.22 * 10 / 86400, 'markets earn live', 1e-9);
+  near(b.ev('baselineAccum') - w0, 10, 'wear-out runs live at full rate', 1e-6);
 });
 
 // ---------- RETURN_QUICK_ACTIONS_V1 -------------------------------------------

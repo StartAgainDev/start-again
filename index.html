@@ -12,7 +12,11 @@
      report, survival day count.
      Part 3 (UI only): the Bank opens on one markets board (collect, collect all, an invest toggle,
      buy and fit straight away); every menu option can be clicked or tapped; one-tap shortcuts after
-     the return report. UI proposals: INVEST_STEPS, TAP_SETTLE_MS. See docs/renewable-clocks-phase2.md. -->
+     the return report. UI proposals: INVEST_STEPS, TAP_SETTLE_MS.
+     Part 4 (UI only): the board moves in real time: earnings count up, and each market has a meter
+     and countdown to its next fuse; a live soonest-failure line. A reload with every system full
+     keeps the live tick running (wear-out and earnings no longer pause). UI proposal:
+     LIVE_DECIMALS_MAX. See docs/renewable-clocks-phase2.md. -->
 <!-- v8.47: VAULT DOSSIERS + SOVEREIGN CURRENCIES + WELCOME-BACK CLUE (2026-07-19).
      SP_TERMINAL_V5: (1) Each central bank now holds its OWN sovereign fiat (USD/CNY/RUB/GBP/JPY/EUR)
      plus BTC & GEARS; looted foreign fiat lands in a new BANK 'FOREIGN RESERVES' section. (2) Entering
@@ -30406,6 +30410,18 @@ var SA_TUT_AVATARS = {
   #saTerm .saB-foot{ margin:8px 0 0; }
   #saTerm .saB-msg{ margin:8px 0 0; min-height:1.45em; }
   #saTerm .saB-fit{ margin:6px 0; padding:8px; border:1px solid rgba(143,214,255,.45); border-radius:4px; }
+  /* LIVE_MARKETS_V1: earnings counting up, and a meter and countdown to the next fuse. */
+  #saTerm .saB-r2{ justify-content:flex-start; gap:2px 16px; margin-top:3px; }
+  #saTerm .saB-odo b{ font-weight:700; }
+  #saTerm .saB-odo i{ font-style:normal; opacity:.6; }
+  #saTerm .saB-race{ display:inline-flex; align-items:center; gap:6px; white-space:nowrap; }
+  #saTerm .saB-k{ color:#3a9a68; letter-spacing:1px; }
+  #saTerm .saB-meter{ position:relative; display:inline-block; width:110px; height:9px; overflow:hidden;
+    border:1px solid rgba(143,214,255,.5); border-radius:2px; background:rgba(143,214,255,.07); }
+  #saTerm .saB-fill{ position:absolute; left:0; top:0; bottom:0; width:0; background:#8fd6ff; box-shadow:0 0 8px rgba(143,214,255,.7); }
+  #saTerm .saB-eta{ color:#8fd6ff; text-shadow:0 0 6px rgba(143,214,255,.45); }
+  #saTerm .saB-eta.ok{ color:#b9ffd6; text-shadow:0 0 8px rgba(160,255,210,.7); }
+  #saTerm .saB-failline{ margin:2px 0 0; }
   #saTerm .saB-fit .saB-btn{ display:block; width:100%; text-align:left; margin:6px 0; white-space:normal; }
   @media (pointer:coarse){
     #saTerm .saB-btn, #saTerm .saTerm-chip{ min-height:44px; padding:6px 12px; font-size:14px; }
@@ -30433,9 +30449,12 @@ var SA_TUT_AVATARS = {
     #saTerm .saB{ font-size:14px; }
     #saTerm .saB-tabs{ gap:5px; }
     #saTerm .saB-tabs .saB-btn{ padding:6px 6px; letter-spacing:0; font-size:13px; }
-    #saTerm .saB-r2{ display:block; }
-    #saTerm .saB-r2 .saB-acts{ display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:6px; margin-top:4px; }
-    #saTerm .saB-r2 .saB-btn{ padding:6px 4px; letter-spacing:0; font-size:13px; white-space:normal; }
+    #saTerm .saB-r1{ display:block; }
+    #saTerm .saB-r1 .saB-acts{ display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:6px; margin-top:4px; }
+    #saTerm .saB-r1 .saB-btn{ padding:6px 4px; letter-spacing:0; font-size:13px; white-space:normal; }
+    #saTerm .saB-r2{ gap:2px 12px; margin-top:6px; }
+    #saTerm .saB-race{ flex:1 1 100%; }
+    #saTerm .saB-meter{ flex:1 1 auto; width:auto; min-width:80px; }
   }
 </style>
 
@@ -31587,6 +31606,10 @@ var SA_TUT_AVATARS = {
     // appears, so a double-tap can't press the button that just appeared under the finger
     // (e.g. COLLECT, then REINVEST in the same spot). Typing is never delayed.
     TAP_SETTLE_MS: 300,
+    // PROPOSAL (UI only, LIVE_MARKETS_V1): the most decimal places the Bank board's live
+    // earnings counter shows. It shows the cents you can collect, then just enough finer
+    // digits for the last one to move about once a second, up to this many in all.
+    LIVE_DECIMALS_MAX: 6,
     // Dev time-skip steps, as the user listed them: +10m, +1h, +8h, +24h, +3d.
     DEV_SKIP_STEPS: [
       {label:"+10m", secs:10*60}, {label:"+1h", secs:3600}, {label:"+8h", secs:8*3600},
@@ -33693,6 +33716,7 @@ var SA_TUT_AVATARS = {
       return;
     }
     if(v==="C" || v==="P"){   // [P] kept as a shortcut for an old habit: collect, then choose
+      if(!settleClock()) return;   // LIVE_MARKETS_V1
       var ready=ECON.ready(m.id);
       if(!(ready>0)){
         var pd=ECON.perDay(m.id);
@@ -33739,6 +33763,7 @@ var SA_TUT_AVATARS = {
     hideInput(); busy=true;
     var m = ECON.marketById(mSel); if(!m){ return void openBoard(); }
     if(v==="R" || v==="P"){
+      if(!settleClock()) return;   // LIVE_MARKETS_V1
       var amt = ECON.collect(m.id, v==="R" ? "reinvest" : "payout");
       if(amt>0) saveBunkerState();
       var msg = !(amt>0) ? "Nothing to collect."
@@ -33793,11 +33818,12 @@ var SA_TUT_AVATARS = {
      still works: 1-5 open a market's full screen, A collect all, F fit, V vaults, S vault
      seeds, L ledger, B back. Nothing here adds clock time: a fit still spends one held fuse. */
   var BOARD_PROMPT = "BANK [1-5 / A / F / V / S / L / B] >";
-  var board = { open:false, step:0, ask:null, askAll:false, fit:false, fitNote:"", msg:null, timer:null, last:"", pressing:false, el:null };
+  var board = { open:false, step:0, ask:null, askAll:false, fit:false, fitNote:"", msg:null, timer:null, last:"", pressing:false, el:null, raf:0, liveEls:null };
   function closeBoardState(){
     if(!board) return;
-    board.open=false; board.ask=null; board.askAll=false; board.fit=false; board.el=null; board.last="";
+    board.open=false; board.ask=null; board.askAll=false; board.fit=false; board.el=null; board.last=""; board.liveEls=null;
     if(board.timer){ clearInterval(board.timer); board.timer=null; }
+    stopLive();
   }
   function isBoardMode(){ return mode==="board" || mode==="boardAll" || mode==="boardAsk" || mode==="boardFit"; }
   function investSteps(){ return (SA_RENEW.INVEST_STEPS && SA_RENEW.INVEST_STEPS.length) ? SA_RENEW.INVEST_STEPS : [1]; }
@@ -33817,7 +33843,102 @@ var SA_TUT_AVATARS = {
     return '<button type="button" class="saB-btn'+(cls?(" "+cls):"")+'" data-act="'+act+'"'+(v!=null?(' data-v="'+esc(String(v))+'"'):"")+'>'+esc(label)+'</button>';
   }
   function readyCount(){ var n=0; for(var i=0;i<ECON.markets.length;i++){ if(ECON.ready(ECON.markets[i].id)>0) n++; } return n; }
-  function boardHTML(){
+  /* LIVE_MARKETS_V1 (2026-11-08): the board moves in real time, the way AdVenture Capitalist
+     shows its businesses working. Each market counts its earnings up as they arrive, and a
+     meter and countdown run to the next fuse it pays for: that currency's wallet plus the
+     earnings, against the live price. AdCap's slow businesses (the Oil Company runs a 10-hour
+     cycle) have bars that barely move; their ticking timers are what make them feel live, and
+     the countdown does that job here. The board also shows the soonest failure COMMS can see,
+     so the race between money and life support is on one screen.
+     Display only. The numbers come from the earnings the game credits on its half-second
+     tick, carried forward at most one second, and every collect settles the time first, so
+     what you see is what you get. Nothing moves while the bunker is frozen. */
+  function liveSecs(){
+    if(!clocksArmed || bunkerFrozen || actionPause || deadRun || !(termActive || bunkerLive)) return 0;
+    return Math.max(0, Math.min(1, (Date.now()-lastTickTs)/1000));
+  }
+  function ratePerSec(m){ return (m && m.position>0) ? m.position*SA_RENEW.EARN_PER_DAY/86400 : 0; }
+  function liveEarned(m){ return Math.max(0, (m.earned||0) + ratePerSec(m)*liveSecs()); }
+  // Decimal places: the cents, plus enough for the last digit to move about once a second.
+  function liveDigits(m){
+    var r=ratePerSec(m), max=Math.max(2, (SA_RENEW.LIVE_DECIMALS_MAX|0) || 2);
+    if(!(r>0)) return 2;
+    return Math.max(2, Math.min(max, Math.ceil(-Math.log(r)/Math.LN10 - 1e-9)));
+  }
+  // The earnings as {bright: the cents you can collect, dim: the finer digits still arriving}.
+  function readyParts(m){
+    var d=liveDigits(m), f=Math.pow(10, d), v=Math.floor(liveEarned(m)*f+1e-6)/f;
+    var s=v.toFixed(d), dot=s.indexOf(".");
+    var whole=s.slice(0, dot).replace(/\B(?=(\d{3})+(?!\d))/g, ","), frac=s.slice(dot+1);
+    return {bright:whole+"."+frac.slice(0, 2), dim:frac.slice(2)};
+  }
+  // The meter and countdown to this market's next fuse.
+  function fuseRace(m){
+    var price=ECON.quote(m.id).price, wal=ECON.wallet[m.currency]||0;
+    if(ECON.inventory.availableStock<=0) return {state:"soldout", frac:0};
+    if(wal>=price) return {state:"ready", frac:1};
+    var have=wal+liveEarned(m), frac=Math.max(0, Math.min(1, have/price));
+    if(have>=price) return {state:"payout", frac:1};
+    var r=ratePerSec(m);
+    if(!(r>0)) return {state:"idle", frac:frac};
+    return {state:"eta", frac:frac, secs:(price-have)/r};
+  }
+  // A ticking clock, AdCap style: 01:12:09, or 2d 01:12:09 past a day.
+  function fmtClock(s){
+    s=Math.max(0, Math.ceil(s-1e-9));
+    var d=Math.floor(s/86400); s-=d*86400;
+    var h=Math.floor(s/3600), mi=Math.floor((s%3600)/60), se=s%60;
+    var t=(h<10?"0":"")+h+":"+(mi<10?"0":"")+mi+":"+(se<10?"0":"")+se;
+    return d>0 ? (d+"d "+t) : t;
+  }
+  function raceText(rc){
+    if(rc.state==="eta") return fmtClock(rc.secs);
+    if(rc.state==="ready") return "READY \u00b7 buy it now";
+    if(rc.state==="payout") return "READY \u00b7 pay out first";
+    if(rc.state==="soldout") return "SOLD OUT";
+    return "invest to earn one";
+  }
+  // The soonest life-support failure COMMS can see, counting down between ticks.
+  function liveFailure(){
+    var soon=soonestVisibleFailure();
+    return soon ? {name:FUSE[soon.key].name, secs:Math.max(0, soon.secs-liveSecs())} : null;
+  }
+  function failText(){ var f=liveFailure(); return f ? ("Soonest failure you can see: "+f.name+"\u00a0in\u00a0"+fmtClock(f.secs)) : ""; }
+  // Settle the clock before money moves, so a collect pays exactly what the board shows.
+  function settleClock(){
+    if(clocksArmed && !bunkerFrozen && (termActive || bunkerLive)) clockStep();
+    return !deadRun;
+  }
+  function setLiveText(el, t){ if(el && el._t!==t){ el._t=t; el.textContent=t; } }
+  // Write the moving numbers into the board in place: text and widths only, never the
+  // buttons, so a tap is never lost to a redraw.
+  function liveUpdate(){
+    if(!board.open || !board.el) return;
+    var els=board.liveEls||[];
+    for(var i=0;i<els.length;i++){
+      var el=els[i], kind=el.getAttribute("data-live");
+      if(kind==="fail"){ var ft=failText(); setLiveText(el, ft); el.style.display=ft ? "" : "none"; continue; }
+      var m=ECON.marketById(el.getAttribute("data-m")||""); if(!m) continue;
+      if(kind==="odo"){ var pr=readyParts(m); setLiveText(el.children[0], pr.bright); setLiveText(el.children[1], pr.dim); }
+      else if(kind==="meter"){ var w=(fuseRace(m).frac*100).toFixed(2)+"%"; if(el._w!==w){ el._w=w; el.style.width=w; } }
+      else if(kind==="eta"){
+        var rc=fuseRace(m), cls="saB-eta"+((rc.state==="ready" || rc.state==="payout") ? " ok" : "");
+        setLiveText(el, raceText(rc)); if(el.className!==cls) el.className=cls;
+      }
+    }
+  }
+  // Every animation frame while the board is open. Browsers pause these in background tabs.
+  function liveLoop(){
+    board.raf=0;
+    if(!board.open) return;
+    liveUpdate();
+    board.raf=requestAnimationFrame(liveLoop);
+  }
+  function startLive(){ if(board.raf || typeof requestAnimationFrame!=="function") return; board.raf=requestAnimationFrame(liveLoop); }
+  function stopLive(){ if(board && board.raf){ try{ cancelAnimationFrame(board.raf); }catch(e){} board.raf=0; } }
+  // live=false gives the board without its moving numbers: comparing that tells the 1 s tick
+  // whether anything besides the numbers changed (then, and only then, it redraws).
+  function boardHTML(live){
     var w=ECON.wallet, inv=ECON.inventory, h=[], i;
     h.push('<div class="saB-tabs">'+bBtn("tab","M","MARKETS","on")+bBtn("tab","V","[V] VAULTS")+bBtn("tab","L","[L] LEDGER")+bBtn("tab","B","[B] BACK")+'</div>');
     h.push('<div class="saB-head"><span class="saTerm-amber">// BANK \u2014 NEW MARKETS //</span><span class="saTerm-dim">DAY '+bunkerDay()+'</span></div>');
@@ -33825,6 +33946,8 @@ var SA_TUT_AVATARS = {
     var dot=nb+'\u00b7 ';   // a wrap happens after a separator, never before it
     h.push('<div class="saB-strip">WALLET'+nb+' \u0243'+nb+fmtMoney(w.BTC)+dot+'XRP'+nb+fmtMoney(w.XRP)+dot+'$'+nb+fmtMoney(w.USD)+dot+'ETH'+nb+fmtMoney(w.ETH)+dot+'\u2699'+nb+fmtMoney(w.GEARS)+'</div>');
     h.push('<div class="saB-strip">FUSES'+nb+' for'+nb+'sale'+nb+inv.availableStock+dot+'held'+nb+inv.heldByPlayer+dot+'fitted'+nb+inv.installed+dot+'destroyed'+nb+inv.destroyed+'</div>');
+    var ft=live ? failText() : "";
+    h.push('<div class="saB-failline saTerm-warn" data-live="fail"'+((live && !ft) ? ' style="display:none"' : '')+'>'+esc(ft)+'</div>');
     if(board.fit){
       h.push('<div class="saB-fit"><div class="saTerm-bright">'+esc(board.fitNote || ("Fit a fuse. You hold "+inv.heldByPlayer+"."))+'</div>');
       for(i=0;i<FUSE_ORDER.length;i++){
@@ -33845,10 +33968,8 @@ var SA_TUT_AVATARS = {
       for(i=0;i<steps.length;i++) bar += bBtn("step", i, stepLabel(steps[i]), i===board.step ? "on" : "");
       h.push(bar+'</span></div>');
       for(i=0;i<ECON.markets.length;i++){
-        var m=ECON.markets[i], r=ECON.ready(m.id), q=ECON.quote(m.id), bal=w[m.currency]||0, amt=investAmount(m);
-        var row='<div class="saB-row"><div class="saB-r1"><span class="saB-name">['+(i+1)+'] '+esc(m.label)+' \u00b7 '+m.currency+'</span>'+
-                '<span class="saTerm-dim">'+(m.position>0 ? (fmtMoney(m.position)+' invested \u00b7 +'+fmtMoney(ECON.perDay(m.id))+' a day') : 'nothing invested')+'</span></div>'+
-                '<div class="saB-r2"><span class="'+(r>0 ? "saB-ready" : "saTerm-dim")+'">'+((m.position>0 || r>0) ? ('ready '+fmtMoney(r)+' '+m.currency) : '')+'</span><span class="saB-acts">';
+        var m=ECON.markets[i], r=ECON.ready(m.id), q=ECON.quote(m.id), bal=w[m.currency]||0, amt=investAmount(m), mid=esc(m.id);
+        var row='<div class="saB-row"><div class="saB-r1"><span class="saB-name">['+(i+1)+'] '+esc(m.label)+' \u00b7 '+m.currency+'</span><span class="saB-acts">';
         if(board.ask===m.id && r>0){
           row += bBtn("reinvest", m.id, "[R] REINVEST "+fmtMoney(r), "go")+bBtn("payout", m.id, "[P] PAY OUT "+fmtMoney(r), "go")+bBtn("cancelAsk", null, "\u00d7");
         } else {
@@ -33856,7 +33977,16 @@ var SA_TUT_AVATARS = {
         }
         row += bBtn("invest", m.id, "INVEST "+(investStep()>=1 ? "ALL " : "")+fmtMoney(amt), amt>=0.01 ? "" : "dim");
         row += bBtn("buy", m.id, "BUY FUSE "+fmtMoney(q.price), (inv.availableStock>0 && bal>=q.price) ? "go" : "dim");
-        h.push(row+'</span></div></div>');
+        // LIVE_MARKETS_V1: what it earns, the earnings counting up, and the run to the next fuse.
+        var rc=live ? fuseRace(m) : null, od=live ? readyParts(m) : {bright:"", dim:""};
+        row += '</span></div><div class="saB-r2"><span class="saTerm-dim">'+(m.position>0 ? (fmtMoney(m.position)+' invested \u00b7 +'+fmtMoney(ECON.perDay(m.id))+' a day') : 'nothing invested')+'</span>';
+        if(m.position>0 || r>0){
+          row += '<span class="'+(r>0 ? "saB-ready" : "saTerm-dim")+'">ready'+nb+'<span class="saB-odo" data-live="odo" data-m="'+mid+'"><b>'+od.bright+'</b><i>'+od.dim+'</i></span>'+nb+m.currency+'</span>';
+        }
+        row += '<span class="saB-race"><span class="saB-k">FUSE</span><span class="saB-meter"><span class="saB-fill" data-live="meter" data-m="'+mid+'"'+
+               (live ? (' style="width:'+(rc.frac*100).toFixed(2)+'%"') : '')+'></span></span>'+
+               '<span class="saB-eta'+((live && (rc.state==="ready" || rc.state==="payout")) ? " ok" : "")+'" data-live="eta" data-m="'+mid+'">'+(live ? esc(raceText(rc)) : '')+'</span></span>';
+        h.push(row+'</div></div>');
       }
       var held=inv.heldByPlayer;
       h.push('<div class="saB-foot">'+bBtn("fitOpen", null, "[F] FIT HELD FUSE ("+held+")", held>0 ? "go" : "dim")+bBtn("seeds", null, "[S] VAULT SEEDS")+'</div>');
@@ -33867,16 +33997,19 @@ var SA_TUT_AVATARS = {
   }
   function renderBoard(){
     if(!board.open || !screen) return;
-    var html=boardHTML();
     if(!board.el){ board.el=document.createElement("div"); board.el.className="saB"; screen.appendChild(board.el); }
-    board.last=html; board.el.innerHTML=html;
+    board.last=boardHTML(false);
+    board.el.innerHTML=boardHTML(true);
+    try{ board.liveEls=board.el.querySelectorAll("[data-live]"); }catch(e){ board.liveEls=null; }
   }
-  // Live numbers: redraw only when something on the board changed, never mid-tap.
+  // Once a second: redraw only when something besides the moving numbers changed, never
+  // mid-tap. The numbers themselves move every animation frame (liveLoop); this also keeps
+  // them moving where animation frames are unavailable.
   function boardTick(){
     if(!board.open){ closeBoardState(); return; }
     if((board.pressing && Date.now()-(board.pressAt||0)<3000) || busy || !board.el) return;
-    var html=boardHTML();
-    if(html!==board.last){ board.last=html; board.el.innerHTML=html; }
+    if(boardHTML(false)!==board.last) renderBoard();
+    liveUpdate();
   }
   function boardPrompt(){
     busy=false;
@@ -33892,6 +34025,7 @@ var SA_TUT_AVATARS = {
     renderBoard();
     try{ screen.scrollTop=0; }catch(e){}
     board.timer=setInterval(boardTick, 1000);
+    startLive();   // LIVE_MARKETS_V1
     boardPrompt();
   }
   function boardClick(el){
@@ -33905,6 +34039,8 @@ var SA_TUT_AVATARS = {
     if(!board.open) return null;
     var m=v ? ECON.marketById(v) : null, inv=ECON.inventory, sfx=true, i;
     board.msg=null;
+    // LIVE_MARKETS_V1: settle the time before money moves or a fuse is fitted (like MOVE).
+    if(/^(collect|reinvest|payout|collectAll|reinvestAll|payoutAll|fit)$/.test(act)){ if(!settleClock() || !board.open) return null; }
     if(act==="tab"){ if(v!=="M"){ leaveBoard(v); return null; } }
     else if(act==="step"){ var n=parseInt(v,10); if(n>=0 && n<investSteps().length) board.step=n; }
     else if(act==="collect" && m){
@@ -33959,8 +34095,6 @@ var SA_TUT_AVATARS = {
     }
     else if(act==="fit"){
       if(!FUSE[v] || !board.fit) return null;
-      if(clocksArmed && (termActive || bunkerLive)) clockStep();   // settle time first, like MOVE
-      if(deadRun || !board.open) return null;
       var res=fitSpare(v); sfx=false;                                 // fitSpare plays its own sound
       if(res.ok){ board.fit=false; boardSay(res.msg); } else board.fitNote=res.msg;
     }
@@ -34849,8 +34983,12 @@ var SA_TUT_AVATARS = {
       });
       return;
     }
-    // Non-critical: restore the engine if anything is still degraded, then report normally.
-    if(FUSE.power.lit<4 || FUSE.defense.lit<4 || anyLethalTicking()) armClocks();
+    // Non-critical: restart the engine, then report normally.
+    // RESUME_ALWAYS_TICKS_V1 (2026-11-08): always restart the live tick. Wear-out (an
+    // obligation) runs at full rate and markets earn on wall-clock time even when every system
+    // is full. Without the tick, a reload with a full grid paused both while the tab stayed
+    // open, and the next save moved the save time forward, so that time was never billed.
+    armClocks();
     var lines=offlineReportLines(res);
     var p=Promise.resolve();
     lines.forEach(function(l){ p=p.then(function(){ return typeLine(l.t, l); }); });

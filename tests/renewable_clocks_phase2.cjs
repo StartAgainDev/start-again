@@ -164,7 +164,7 @@ test('one settings block holds every new number, each balance number labelled a 
     { label: '+10m', secs: 600 }, { label: '+1h', secs: 3600 }, { label: '+8h', secs: 28800 },
     { label: '+24h', secs: 86400 }, { label: '+3d', secs: 259200 },
   ]), 'time-skip steps must be exactly the user\'s list');
-  eq(h.ev('Object.keys(SA_RENEW).join(",")'), 'EARN_PER_DAY,SHOP_STOCK,PRICE_UNITS,STARTER_GRANT,INVEST_STEPS,TAP_SETTLE_MS,DEV_SKIP_STEPS,DEV_PRESETS',
+  eq(h.ev('Object.keys(SA_RENEW).join(",")'), 'EARN_PER_DAY,SHOP_STOCK,PRICE_UNITS,STARTER_GRANT,INVEST_STEPS,TAP_SETTLE_MS,LIVE_DECIMALS_MAX,DEV_SKIP_STEPS,DEV_PRESETS',
     'the settings block holds the play-test proposals and the dev tooling, nothing else');
   eq(h.ev('SA_RENEW.EARN_PER_DAY'), 0.22, 'earnings proposal');
   eq(h.ev('SA_RENEW.SHOP_STOCK'), 32, 'stock proposal');
@@ -172,8 +172,9 @@ test('one settings block holds every new number, each balance number labelled a 
   eq(h.ev('JSON.stringify(SA_RENEW.STARTER_GRANT)'), JSON.stringify({ BTC: 25, XRP: 250, USD: 250, ETH: 2.5, GEARS: 50 }), 'starter grant proposal');
   eq(h.ev('JSON.stringify(SA_RENEW.INVEST_STEPS)'), JSON.stringify([0.25, 0.5, 1]), 'invest toggle proposal (UI only)');
   eq(h.ev('SA_RENEW.TAP_SETTLE_MS'), 300, 'double-tap guard proposal (UI only)');
+  eq(h.ev('SA_RENEW.LIVE_DECIMALS_MAX'), 6, 'live counter decimals proposal (UI only)');
   const block = HTML.slice(HTML.indexOf('RENEWABLE_CLOCKS_SETTINGS_V1 (2026-11-08)'), HTML.indexOf('end RENEWABLE_CLOCKS_SETTINGS_V1'));
-  for (const k of ['EARN_PER_DAY', 'SHOP_STOCK', 'PRICE_UNITS', 'STARTER_GRANT', 'INVEST_STEPS', 'TAP_SETTLE_MS']) {
+  for (const k of ['EARN_PER_DAY', 'SHOP_STOCK', 'PRICE_UNITS', 'STARTER_GRANT', 'INVEST_STEPS', 'TAP_SETTLE_MS', 'LIVE_DECIMALS_MAX']) {
     const before = block.slice(0, block.indexOf(k + ':'));
     assert(/\/\/ PROPOSAL[^\n]*\n(\s*\/\/[^\n]*\n)*\s*$/.test(before), `${k} carries a PROPOSAL label`);
   }
