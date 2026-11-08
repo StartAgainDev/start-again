@@ -30679,7 +30679,7 @@ var SA_TUT_AVATARS = {
   // Human clock label for a system given current fuses + POWER multiplier.
   function clockLabel(key){
     var sys=FUSE[key];
-    if(key==="power"){ return POWER_MULT[sys.lit].cap+"% \u00b7 x"+powerMult().toFixed(1)+" all clocks"; }
+    if(key==="power"){ return POWER_MULT[sys.lit].cap+"% \u00b7 x"+powerMult().toFixed(1)+" life support"; }
     if(key==="comms"){ var v=commsVis(); return v>=100 ? "full telemetry" : (v<=0 ? "BLIND" : v+"% telemetry"); }
     // DEFENSE = sabotage-rate dial, not a countdown.
     if(key==="defense"){
@@ -30799,9 +30799,8 @@ var SA_TUT_AVATARS = {
      of the bigger budget (FUSE_MOVE_NO_FREE_TIME_V1), and at 4/4 the drain stops and the
      spent reserve refills over FULL_CAPACITY_REFILL_S (FULL_CAPACITY_REFILL_V1). Fitting is
      the only way a new fuse enters the grid, and each fit spends one held fuse, once. */
-  // Time left as the panel's clock shows it (liveLabel). POWER speeds that clock up or slows it
-  // down rather than changing the number, so previews use the same reading as the panel.
-  function clockLeft(key){ return (rem[key]==null) ? null : Math.max(0, rem[key]*TIME_SCALE); }
+  // Real time left, exactly as the panel's clock shows it (REAL_TIME_LEFT_V1).
+  function clockLeft(key){ return (rem[key]==null) ? null : Math.max(0, rem[key]*TIME_SCALE/powerMult()); }
   // COMMS only changes visibility: never preview a countdown the player has no sensor on.
   function canSee(key){ return WATCHABLE.indexOf(key)<0 || !!commsWatch[key]; }
   // The life-support system that will fail first, among those COMMS can see. Null if none drains.
@@ -30833,7 +30832,7 @@ var SA_TUT_AVATARS = {
     }
     if(now===null || !(oldB>0)) return "up one level";
     var newB=CLOCK_MIN[key][to];
-    var after=Math.min(newB, rem[key]*(newB/oldB))*TIME_SCALE;
+    var after=Math.min(newB, rem[key]*(newB/oldB))*TIME_SCALE/powerMult();
     return fmtDur(now)+" \u2192 "+fmtDur(after)+" left";
   }
   function fitChoiceLines(){
@@ -31095,6 +31094,24 @@ var SA_TUT_AVATARS = {
   var BASELINE_SECS = 24*3600;         // real secs between natural fuse blows (always on). Tunable.
   var BASELINE_POOL = ["air","water","thermal","comms","defense"]; // POWER excluded (master dial)
   var baselineAccum = 0;               // real seconds banked toward the next baseline blow
+  /* SABOTAGE_SHARE_V1 (2026-11-08, fairness): sabotage progress keeps its SHARE when DEFENSE
+     changes level, the same way a clock keeps its share when a fuse moves (rule A). Before,
+     30 h of progress at 3/4 (one per 48 h) became an instant blow the moment decay knocked
+     DEFENSE to 2/4 (one per 24 h), so two fuses could go in the same minute. The rates per
+     level are unchanged; 4/4 still clears the progress. */
+  var sabLevel = null;                 // DEFENSE level that sabotageAccum was counted at
+  function syncSabLevel(){
+    var lvl=FUSE.defense.lit;
+    if(sabLevel===null || lvl===sabLevel){ sabLevel=lvl; return; }
+    var oldI=SABOTAGE_SECS[sabLevel], newI=SABOTAGE_SECS[lvl];
+    if(oldI && newI) sabotageAccum = sabotageAccum*(newI/oldI);
+    else if(!newI) sabotageAccum = 0;
+    sabLevel=lvl;
+  }
+  /* SURVIVAL_TIME_V1 (2026-11-08): seconds the bunker has been running since the opening
+     assault, counted on the same time path (so frozen Single Player time never counts).
+     Shown as the day number in the return report and on the death screen. */
+  var aliveS = 0;
   // Blow ONE random fuse from a system that still has one. Reconciles clocks. Returns the key hit, or null.
   function baselineBlowOne(){
     var cands=[]; for(var i=0;i<BASELINE_POOL.length;i++){ var k=BASELINE_POOL[i]; if(FUSE[k].lit>0) cands.push(k); }
@@ -31165,7 +31182,9 @@ var SA_TUT_AVATARS = {
     // If a clock isn't running yet but the system is below full, show the static tier label.
     if(rem[key]===null) return (FUSE[key].lit>=4) ? "\u2014" : clockLabel(key);
     if(key==="defense" && FUSE[key].lit===0) return "BREACH \u2014 death";
-    return "\u25b8 "+ fmtDur(rem[key] * TIME_SCALE); // remaining real time until this system fails
+    // REAL_TIME_LEFT_V1 (2026-11-08, audit F14): divide by POWER, so at POWER 3/4 a clock
+    // that fails in 8 h says 8 h. It used to show the time left at full POWER (12 h).
+    return "\u25b8 "+ fmtDur(rem[key] * TIME_SCALE / powerMult()); // remaining real time until this system fails
   }
   // Human duration on a real-world scale: days / hours / minutes / seconds.
   function fmtDur(realSecs){
@@ -31342,6 +31361,7 @@ var SA_TUT_AVATARS = {
     var left=span, died=null;
     while(left>0 && !died){
       var step=Math.min(left,ADVANCE_SLICE_S);
+      syncSabLevel();   // SABOTAGE_SHARE_V1: rescale progress before sizing the next step
       if(wallRate>0){
         var sabInt=sabotageInterval();
         var sleeping=(typeof HOME!=="undefined") && HOME.isAsleep();
@@ -31371,6 +31391,11 @@ var SA_TUT_AVATARS = {
   }
   function _advanceOne(dtReal, live, fullDt, fromTs){
     if(FUSE.defense.lit===0) return "defense";
+    syncSabLevel();                                     // SABOTAGE_SHARE_V1
+    if(fullDt>0){
+      aliveS += fullDt;                                 // SURVIVAL_TIME_V1
+      if(typeof ECON!=="undefined") ECON.accrue(fullDt); // MARKET_EARNINGS_V1: wall-clock time
+    }
     var mult=powerMult();
     // Convert elapsed REAL seconds -> spec-minutes drained, scaled by POWER (weak power drains faster).
     var drainedMin = (dtReal / TIME_SCALE) * mult;
@@ -31466,6 +31491,58 @@ var SA_TUT_AVATARS = {
      exists. */
   var SAVE_KEY = "SA_BUNKER_STATE_V1";
 
+  /* ===== RENEWABLE_CLOCKS_SETTINGS_V1 (2026-11-08) ======================================
+     ONE settings block for every number the renewable-clocks phase adds.
+     Approved by the user (2026-11-08): refresh rule A. Clocks are never bought with coin. A
+     fuse bought at the market and fitted where one blew restores that system's capacity
+     (RENEWABLE_CLOCKS_FIT_V1); it needs no new number.
+     PLAYTEST PROPOSALS (2026-11-08): the user asked for a fair, fun build to play-test, so
+     the recommended options from the Phase 1 audit are switched on below. Each one is a
+     labelled proposal, not approved balance. Change them here and nowhere else.
+     The rest of the block is dev test tooling, not balance. */
+  var SA_RENEW = {
+    // PROPOSAL (MARKET_EARNINGS_V1, audit F3): each market earns this share of the amount
+    // invested in it per day, in that market's own currency, on wall-clock time: live, with
+    // the tab closed or hidden, and in the dev time-skip. Nothing is earned while Single
+    // Player has the bunker frozen. Invested money stays in; only the earnings come out,
+    // and the terminal asks REINVEST or PAYOUT (the user's 27 July rule).
+    EARN_PER_DAY: 0.22,
+    // PROPOSAL: fuses for sale across every vendor. One shared stock, never refilled.
+    // 32 lets a diligent player reach about 35 days (the user's note); it was 24.
+    SHOP_STOCK: 32,
+    // PROPOSAL (audit F6): what one fuse costs in each currency before the shared price rise,
+    // in the same ratio as the starter grant and the vault seeds, so every vendor can sell:
+    // 100 USD = 100 XRP = 20 GEARS = 10 BTC = 1 ETH. Before this, BTC and ETH could never
+    // reach the flat price of 100.
+    PRICE_UNITS: {USD:1, XRP:1, GEARS:0.2, BTC:0.1, ETH:0.01},
+    // PROPOSAL: the starting wallet, halved from 50 BTC / 500 XRP / 500 USD / 5 ETH / 100 GEARS
+    // because all five currencies can now buy fuses. It is worth about what the old grant
+    // could actually buy, so the runway stays on target (the model: ~22 days for a casual
+    // daily player, ~37 for a diligent one, against ~10 for a player who never invests).
+    STARTER_GRANT: {BTC:25, XRP:250, USD:250, ETH:2.5, GEARS:50},
+    // Dev time-skip steps, as the user listed them: +10m, +1h, +8h, +24h, +3d.
+    DEV_SKIP_STEPS: [
+      {label:"+10m", secs:10*60}, {label:"+1h", secs:3600}, {label:"+8h", secs:8*3600},
+      {label:"+24h", secs:24*3600}, {label:"+3d", secs:3*24*3600}
+    ],
+    // Dev starting grids. The first three have 19 fuses (what is left after the opening
+    // assault) and match the Phase 1 audit's absence matrix. airShare = AIR's share of
+    // its current level's budget.
+    DEV_PRESETS: [
+      {label:"SECURE",   lit:{defense:4, air:4, power:4, water:4, thermal:3, comms:0}, airShare:1},
+      {label:"TYPICAL",  lit:{defense:3, air:3, power:4, water:4, thermal:4, comms:1}, airShare:1},
+      {label:"FRAGILE",  lit:{defense:2, air:2, power:3, water:4, thermal:4, comms:4}, airShare:0.75},
+      {label:"ALL FULL", lit:{defense:4, air:4, power:4, water:4, thermal:4, comms:4}, airShare:1}
+    ]
+  };
+  // Dev tooling only appears on local copies (file:// or localhost) and on the unlisted
+  // play-test link, which serves this repo's test branch from raw.githack.com. It never
+  // appears on the public site (start-again.pplx.app) or any other host.
+  var SA_DEV_HOST = false;
+  try{ SA_DEV_HOST = (location.protocol==="file:" || /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname) ||
+                      /^raw(cdn)?\.githack\.com$/.test(location.hostname)); }catch(e){}
+  /* ===== end RENEWABLE_CLOCKS_SETTINGS_V1 ================================================ */
+
   /* LOCAL_ECONOMY_V1_START =============================================
      Local Economy v1 (2026-09-07). Shipped on branch feat/local-economy-v1.
 
@@ -31502,7 +31579,7 @@ var SA_TUT_AVATARS = {
      district, biome, or chip identifier appears in the body. The static-check
      test in tests/local_economy_v1.cjs will fail if that changes. */
   var ECON_SAVE_KEY = "SA_ECON_STATE_V1";
-  var ECON_TOTAL_SUPPLY = 24; // fuses for sale: the shared market stock (fixed, never refilled)
+  var ECON_TOTAL_SUPPLY = SA_RENEW.SHOP_STOCK; // fuses for sale: the shared market stock (fixed, never refilled)
   // FUSE_LEDGER_V2 (2026-11-08, audit F5): the 24 fuses that start in the grid (6 systems x 4)
   // are physical fuses too, so the ledger counts them. Every state sums to stock + grid.
   var ECON_GRID_FUSES = 24;
@@ -31510,9 +31587,10 @@ var SA_TUT_AVATARS = {
   // TBD tuning: unplaytested placeholders. Do NOT quote as approved balance.
   var ECON_FUSE_BASE_PRICE   = 100;   // vendor base price per fuse
   var ECON_FUSE_PRICE_GROWTH = 0.08;  // +8% per purchase (compound)
-  var ECON_REINVEST_BONUS    = 0.15;  // 15% growth on reinvest
-  var ECON_PAYOUT_FRACTION   = 1.00;  // payout returns 100% of position (v1 simplest rule)
-  var ECON_STARTER_GRANT = { BTC: 50, XRP: 500, USD: 500, ETH: 5, GEARS: 100 };
+  // MARKET_EARNINGS_V1 (2026-11-08, audit F3): the instant +15% reinvest bonus and the 100%
+  // cash-out are retired. Together they turned 500 USD into 8,183 USD in 20 taps with no time
+  // passing. Markets now earn over time (SA_RENEW.EARN_PER_DAY) and only earnings come out.
+  var ECON_STARTER_GRANT = SA_RENEW.STARTER_GRANT;   // PROPOSAL, see RENEWABLE_CLOCKS_SETTINGS_V1
 
   var ECON_MARKETS_DEF = [
     { id: "ELSALVADOR", label: "El Salvador",   currency: "BTC"   },
@@ -31544,7 +31622,7 @@ var SA_TUT_AVATARS = {
     }
     function freshMarkets(){
       return ECON_MARKETS_DEF.map(function(m){
-        return { id:m.id, label:m.label, currency:m.currency, position:0 };
+        return { id:m.id, label:m.label, currency:m.currency, position:0, earned:0 };
       });
     }
     function freshVaults(){
@@ -31585,31 +31663,48 @@ var SA_TUT_AVATARS = {
         return null;
       },
 
-      // REINVEST: spend `amount` of the market's fixed currency to grow its position.
-      // Growth: position += amount * (1 + REINVEST_BONUS). Failure returns false and
-      // does NOT touch the wallet.
+      // INVEST (MARKET_EARNINGS_V1): move `amount` of the market's currency from the wallet
+      // into the market. It stays invested and earns SA_RENEW.EARN_PER_DAY of itself a day.
+      // No instant bonus. Failure returns false and does NOT touch the wallet.
       reinvest: function(marketId, amount){
         var m = this.marketById(marketId);
-        if(!m || !(amount>0)) return false;
+        if(!m || !(amount>0) || !isFinite(amount)) return false;
         if((this.wallet[m.currency]||0) < amount) return false;
         this.wallet[m.currency] -= amount;
-        m.position += amount * (1 + ECON_REINVEST_BONUS);
-        this.log.push({ t: Date.now(), kind:"reinvest", market:marketId, amount:amount });
+        m.position += amount;
+        this.log.push({ t: Date.now(), kind:"invest", market:marketId, amount:amount });
         return true;
       },
 
-      // PAYOUT: cash out the current position in the market's fixed currency.
-      // v1: returns 100% of the position (the reinvest bonus is the yield).
-      // Zero-position payout is a no-op.
-      payout: function(marketId){
-        var m = this.marketById(marketId);
-        if(!m || !(m.position>0)) return 0;
-        var paid = m.position * ECON_PAYOUT_FRACTION;
-        m.position = 0;
-        this.wallet[m.currency] = (this.wallet[m.currency]||0) + paid;
-        this.log.push({ t: Date.now(), kind:"payout", market:marketId, amount:paid });
-        return paid;
+      // Earnings build up on wall-clock time. Called only from the game's one time path
+      // (_advanceOne), so live play, a closed or hidden tab and the dev time-skip all earn
+      // the same way, and a frozen bunker (Single Player) earns nothing.
+      accrue: function(wallSecs){
+        if(!(wallSecs>0)) return;
+        for(var i=0;i<this.markets.length;i++){
+          var m=this.markets[i];
+          if(m.position>0) m.earned=(m.earned||0)+m.position*SA_RENEW.EARN_PER_DAY*wallSecs/86400;
+        }
       },
+      perDay: function(marketId){ var m=this.marketById(marketId); return m ? m.position*SA_RENEW.EARN_PER_DAY : 0; },
+      ready: function(marketId){ var m=this.marketById(marketId); return m ? Math.floor((m.earned||0)*100)/100 : 0; },
+
+      // COLLECT: the terminal asks REINVEST or PAYOUT (the user's 27 July rule). REINVEST adds
+      // the earnings to the amount invested, so it earns too; PAYOUT puts them in the wallet
+      // to buy fuses with. Returns the amount collected (0 = nothing ready yet).
+      collect: function(marketId, how){
+        var m = this.marketById(marketId);
+        if(!m) return 0;
+        var amt = this.ready(marketId);
+        if(!(amt>0)) return 0;
+        m.earned = Math.max(0, (m.earned||0) - amt);
+        if(how==="reinvest") m.position += amt;
+        else this.wallet[m.currency] = (this.wallet[m.currency]||0) + amt;
+        this.log.push({ t: Date.now(), kind:(how==="reinvest" ? "reinvest" : "payout"), market:marketId, amount:amt });
+        return amt;
+      },
+      // PAYOUT: the earnings only. The invested amount stays in. Nothing ready = no-op.
+      payout: function(marketId){ return this.collect(marketId, "payout"); },
 
       // Vault seed: optional, one-time, password-gated.
       claimVaultSeed: function(vaultId, password){
@@ -31621,11 +31716,14 @@ var SA_TUT_AVATARS = {
         return true;
       },
 
-      // Vendor quote: base price * (1 + growth)^purchaseCount.
+      // Vendor quote: base price * the currency's unit (SA_RENEW.PRICE_UNITS, audit F6)
+      // * (1 + growth)^purchaseCount. The rise is shared: a fuse bought from any vendor
+      // raises every vendor's price.
       quote: function(marketId){
         var m = this.marketById(marketId);
         if(!m) return null;
-        var price = ECON_FUSE_BASE_PRICE * Math.pow(1 + ECON_FUSE_PRICE_GROWTH, this.inventory.purchaseCount);
+        var unit = (SA_RENEW.PRICE_UNITS && SA_RENEW.PRICE_UNITS[m.currency]) || 1;
+        var price = ECON_FUSE_BASE_PRICE * unit * Math.pow(1 + ECON_FUSE_PRICE_GROWTH, this.inventory.purchaseCount);
         return { currency: m.currency, price: Math.round(price*100)/100 };
       },
 
@@ -31685,7 +31783,7 @@ var SA_TUT_AVATARS = {
         return {
           v: 1,
           wallet: this.wallet,
-          markets: this.markets.map(function(m){ return { id:m.id, position:m.position }; }),
+          markets: this.markets.map(function(m){ return { id:m.id, position:m.position, earned:m.earned||0 }; }),
           vaults:  this.vaults.map(function(v){ return { id:v.id, claimed:v.claimed }; }),
           inv: this.inventory
         };
@@ -31696,7 +31794,7 @@ var SA_TUT_AVATARS = {
         if(Array.isArray(s.markets)){
           for(var i=0;i<s.markets.length;i++){
             var mm = this.marketById(s.markets[i].id);
-            if(mm) mm.position = s.markets[i].position||0;
+            if(mm){ mm.position = s.markets[i].position||0; mm.earned = s.markets[i].earned||0; }
           }
         }
         if(Array.isArray(s.vaults)){
@@ -31858,35 +31956,6 @@ var SA_TUT_AVATARS = {
   })();
   /* HOME_NODE_V1_END ==================================================== */
 
-  /* ===== RENEWABLE_CLOCKS_SETTINGS_V1 (2026-11-08) ======================================
-     ONE settings block for every number the renewable-clocks phase adds.
-     Approved by the user (2026-11-08): refresh rule A. Clocks are never bought with coin. A
-     fuse bought at the market and fitted where one blew restores that system's capacity
-     (RENEWABLE_CLOCKS_FIT_V1); it needs no new number.
-     NOT set here because they await the user's approval: market earnings over time, the
-     shop stock size, and the free-pause (F1) / background-tab (F2) fixes.
-     Everything below is dev test tooling, not balance. */
-  var SA_RENEW = {
-    // Dev time-skip steps, as the user listed them: +10m, +1h, +8h, +24h, +3d.
-    DEV_SKIP_STEPS: [
-      {label:"+10m", secs:10*60}, {label:"+1h", secs:3600}, {label:"+8h", secs:8*3600},
-      {label:"+24h", secs:24*3600}, {label:"+3d", secs:3*24*3600}
-    ],
-    // Dev starting grids. The first three have 19 fuses (what is left after the opening
-    // assault) and match the Phase 1 audit's absence matrix. airShare = AIR's share of
-    // its current level's budget.
-    DEV_PRESETS: [
-      {label:"SECURE",   lit:{defense:4, air:4, power:4, water:4, thermal:3, comms:0}, airShare:1},
-      {label:"TYPICAL",  lit:{defense:3, air:3, power:4, water:4, thermal:4, comms:1}, airShare:1},
-      {label:"FRAGILE",  lit:{defense:2, air:2, power:3, water:4, thermal:4, comms:4}, airShare:0.75},
-      {label:"ALL FULL", lit:{defense:4, air:4, power:4, water:4, thermal:4, comms:4}, airShare:1}
-    ]
-  };
-  // Dev tooling only appears on local copies (file:// or localhost), the same gate as the
-  // __saFuse test hook, so the public site never shows it.
-  var SA_DEV_HOST = false;
-  try{ SA_DEV_HOST = (location.protocol==="file:" || /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname)); }catch(e){}
-  /* ===== end RENEWABLE_CLOCKS_SETTINGS_V1 ================================================ */
 
   var OFFLINE_REST_WINDOW_S = 12*3600; // how long the reduced "rest" rate applies
   var OFFLINE_REST_RATE     = 0.35;    // multiplier inside that window
@@ -31932,9 +32001,10 @@ var SA_TUT_AVATARS = {
     try{
       var lit={}; for(var k in FUSE){ if(FUSE.hasOwnProperty(k)) lit[k]=FUSE[k].lit; }
       localStorage.setItem(SAVE_KEY, JSON.stringify({
-        v:1, ts:Date.now(),
+        v:1, ts:(hiddenAt || Date.now()),   // HIDDEN_TAB_AWAY_V1: a hidden tab's time is still away time
         lit:lit, rem:rem, lastLit:lastLit, reserve:reserve, frozen:bunkerFrozen,
-        sab:sabotageAccum, base:baselineAccum,
+        sab:sabotageAccum, base:baselineAccum, sabLvl:sabLevel, alive:aliveS,
+        door:(doorChosen() ? window.saDoorChosen : null),   // DOOR_CHOICE_SAVED_V1 (F1)
         comms:commsWatch, armed:clocksArmed,
         opening:openingApplied, trigger:fuseTriggerFired,
         pass:bunkerPass, unlocked:bunkerUnlocked
@@ -31997,6 +32067,12 @@ var SA_TUT_AVATARS = {
   }
   window.saFreezeBunker = freezeBunker;
 
+  // MARKET_EARNINGS_V1: uncollected earnings per currency (for the return report).
+  function econEarnedByCurrency(){
+    var out={};
+    try{ ECON.markets.forEach(function(m){ out[m.currency]=(out[m.currency]||0)+(m.earned||0); }); }catch(e){}
+    return out;
+  }
   // Restore a saved run and apply the absence. Returns {away, eff, died} or null.
   function restoreBunkerRun(){
     var s=loadBunkerSave(); if(!s) return null;
@@ -32005,6 +32081,13 @@ var SA_TUT_AVATARS = {
     lastLit      = s.lastLit || {air:4,water:4,thermal:4,defense:4};
     sabotageAccum= s.sab  || 0;
     baselineAccum= s.base || 0;
+    sabLevel     = (typeof s.sabLvl==="number") ? s.sabLvl : (s.lit ? s.lit.defense : null);   // SABOTAGE_SHARE_V1
+    aliveS       = s.alive || 0;                                                          // SURVIVAL_TIME_V1
+    /* DOOR_CHOICE_SAVED_V1 (2026-11-08, audit F1): the door choice used to live only in memory,
+       so a reload offered [5] PROCEED again and an Idle run could take the Single Player door
+       for a free pause. An Idle run now stays Idle. A Single Player run keeps its route back to
+       the campaign through [5] PROCEED, and its pause, as before. */
+    try{ if(s.door==="idle") window.saDoorChosen="idle"; }catch(e){}
     commsWatch   = s.comms|| {defense:true,air:true,water:true,thermal:true};
     openingApplied = !!s.opening;
     fuseTriggerFired = !!s.trigger;
@@ -32034,6 +32117,7 @@ var SA_TUT_AVATARS = {
     var gap = Math.max(0, (Date.now()-s.ts)/1000);
     var eff = (!frozen && gap>=OFFLINE_MIN_GAP_S) ? effectiveOfflineSecs(gap) : 0;
     var died = null, blown = [], awayFromTs = Date.now()-gap*1000;
+    var earnedBefore = econEarnedByCurrency();                // MARKET_EARNINGS_V1
     if(eff>0){
       simSilent=true;                       // catch-up is silent
       // Life support gets the reduced rest rate; sabotage and baseline decay are
@@ -32046,7 +32130,9 @@ var SA_TUT_AVATARS = {
     lastTickTs = Date.now();                // the gap is now accounted for — don't let the
                                             // live tick bill it a second time
     awaySecsAtResume = gap;
-    return { away:gap, eff:eff, died:died, frozen:frozen, blown:blown, fromTs:awayFromTs };
+    var earnedAfter = econEarnedByCurrency(), earned = {};
+    for(var ec in earnedAfter){ var d=earnedAfter[ec]-(earnedBefore[ec]||0); if(d>=0.005) earned[ec]=d; }
+    return { away:gap, eff:eff, died:died, frozen:frozen, blown:blown, fromTs:awayFromTs, earned:earned };
   }
   // Human-readable catch-up report for the resumed screen.
   // RENEWABLE_CLOCKS_RETURN_REPORT_V1: the real report plus, after a dev time-skip only,
@@ -32055,7 +32141,7 @@ var SA_TUT_AVATARS = {
   function offlineReportCore(res){
     var out=[];
     out.push({t:"", instant:true});
-    out.push({t:"// SESSION RESTORED — NODE 7 //", cls:"saTerm-amber", speed:26});
+    out.push({t:"// SESSION RESTORED — NODE 7 \u00b7 DAY "+bunkerDay()+" //", cls:"saTerm-amber", speed:26});   // SURVIVAL_TIME_V1
     if(res.frozen){
       out.push({t:"The bunker held while you led the nation. No drift.", cls:"saTerm-dim", speed:22});
       return out;
@@ -32076,11 +32162,18 @@ var SA_TUT_AVATARS = {
       var label;
       if(key==="power"){ label = (lit>=4) ? "\u2014" : "clocks \u00d7"+powerMult().toFixed(1); }
       else if(key==="comms"){ label = (lit>=4) ? "\u2014" : (lit+" channel"+(lit===1?"":"s")+" watched"); }
+      // COMMS_REPORT_VIS_V1 (2026-11-08): the report hides what COMMS can't see, like the FUSE PANEL.
+      // It used to print every countdown, even with no sensor channel on that system.
+      else if(!canSee(key)){ label = "NO SIGNAL"; }
       else { label = liveLabel(key); }   // air/water/thermal countdowns + DEFENSE sabotage rate
       out.push({t:"  "+(FUSE[key].name+"          ").slice(0,12)+lit+"/4   "+label, cls:cls, speed:14});
     }
-    return out.concat(replacementLines());  // RENEWABLE_CLOCKS_RETURN_REPORT_V1
+    return out.concat(replacementLines(res));  // RENEWABLE_CLOCKS_RETURN_REPORT_V1
   }
+  // SURVIVAL_TIME_V1: day 1 starts at the opening assault.
+  function bunkerDay(){ return Math.floor(Math.max(0, aliveS)/86400)+1; }
+  function fmtSurvived(secs){ var d=Math.floor(secs/86400), h=Math.floor((secs%86400)/3600);
+    return d>0 ? (d+" day"+(d===1?"":"s")+", "+h+" hour"+(h===1?"":"s")) : (h>0 ? (h+" hour"+(h===1?"":"s")) : "under an hour"); }
   // Which fuses failed during the absence, why, and when (from the replay's blow log).
   function lostFuseLines(res){
     var lost=(res && res.blown) || [], out=[];
@@ -32094,22 +32187,30 @@ var SA_TUT_AVATARS = {
     if(lost.length>shown) out.push({t:"  ...and "+(lost.length-shown)+" more.", cls:"saTerm-dim", speed:14});
     return out;
   }
-  // How to recover under refresh rule A: buy a fuse at the market, fit it where one blew.
-  function replacementLines(){
+  // How to recover under refresh rule A: earn, buy a fuse at the market, fit it where one blew.
+  function replacementLines(res){
     var out=[];
     if(typeof ECON==="undefined") return out;
-    var inv=ECON.inventory, q=ECON.quote("USA");   // one price across every vendor
-    var payable=ECON.markets.filter(function(m){ return (ECON.wallet[m.currency]||0) >= q.price; })
-                            .map(function(m){ return m.currency; });
+    var inv=ECON.inventory;
     var missing=0; for(var i=0;i<FUSE_ORDER.length;i++){ missing += 4-FUSE[FUSE_ORDER[i]].lit; }
     out.push({t:"-------------------------------------------------", cls:"saTerm-dim", instant:true});
-    out.push({t:"Spare fuses held: "+inv.heldByPlayer+".  Market stock: "+inv.availableStock+".", cls:"saTerm-dim", speed:14});
+    // MARKET_EARNINGS_V1: what the markets made while you were away, and what is waiting.
+    var invested=ECON.markets.some(function(m){ return m.position>0; });
+    var made=[], waiting=[];
+    if(res && res.earned){ for(var c in res.earned){ made.push("+"+fmtMoney(res.earned[c])+" "+c); } }
+    ECON.markets.forEach(function(m){ var r=ECON.ready(m.id); if(r>0) waiting.push(fmtMoney(r)+" "+m.currency); });
+    if(made.length) out.push({t:"Markets earned "+made.join(", ")+" while you were away.", cls:"saTerm-bright", speed:14});
+    if(waiting.length) out.push({t:"Ready to collect at [2] BANK \u2192 [M] MARKETS: "+waiting.join(", ")+".", cls:"saTerm-menukey", speed:14});
+    else if(!invested) out.push({t:"Nothing is invested, so nothing is earning. Invest at [2] BANK \u2192 [M] MARKETS.", cls:"saTerm-warn", speed:14});
+    out.push({t:"Spare fuses held: "+inv.heldByPlayer+".  Fuses for sale: "+inv.availableStock+".", cls:"saTerm-dim", speed:14});
     if(inv.availableStock<=0){
       out.push({t:"The markets have no fuses left to sell.", cls:"saTerm-red", speed:14});
     } else {
-      out.push({t:"Next fuse costs "+fmtMoney(q.price)+" in the seller's currency. "+
-        (payable.length ? ("You can pay in "+payable.join(", ")+".") : "You can't afford one yet."),
-        cls: payable.length ? "saTerm-dim" : "saTerm-warn", speed:14});
+      var can=ECON.markets.filter(function(m){ return (ECON.wallet[m.currency]||0) >= ECON.quote(m.id).price; })
+                          .map(function(m){ return fmtMoney(ECON.quote(m.id).price)+" "+m.currency; });
+      out.push({t: can.length ? ("You can buy a fuse now for "+can.join(" or ")+".")
+                              : "You can't afford a fuse yet. Collect your earnings first.",
+        cls: can.length ? "saTerm-dim" : "saTerm-warn", speed:14});
     }
     if(missing>0){
       out.push({t:"To replace a blown fuse: buy at [2] BANK \u2192 [M] MARKETS, then fit it", cls:"saTerm-menukey", speed:14});
@@ -32244,7 +32345,7 @@ var SA_TUT_AVATARS = {
     critBeeped={air:false, water:false, thermal:false, defense:false};
     reconcileAll();
     if(rem.air!==null) rem.air=CLOCK_MIN.air[FUSE.air.lit]*((p.airShare==null) ? 1 : p.airShare);
-    sabotageAccum=0; baselineAccum=0;
+    sabotageAccum=0; baselineAccum=0; sabLevel=null; aliveS=0;
     commsWatch={defense:true, air:true, water:true, thermal:true}; clampComms();
     openingApplied=true; fuseTriggerFired=true;
     if(typeof ECON!=="undefined") ECON.syncLedger();
@@ -32252,12 +32353,62 @@ var SA_TUT_AVATARS = {
     return true;
   }
 
+  /* HIDDEN_TAB_AWAY_V1 (2026-11-08, audit F2): a tab left open in the background (or a phone
+     that locks, or a laptop that sleeps) is billed exactly like a closed tab. It used to drain
+     at the full rate, 2.86x faster than a closed tab over 8 h, with no return report. On hide
+     the live clock is billed up to that moment, saved and stopped. On return after 20 s or
+     more, the bunker reopens through resumeRun(), the same path as a real return (life
+     support 0.35x for the first 12 h, then 1.0x; decay and sabotage at full rate), with the
+     return report. Shorter hides are billed live at the full rate, as before, so flicking
+     between tabs gains nothing. The opening assassination hunt is never paused this way. */
+  var hiddenAt = 0;            // ms when billing stopped for a hidden tab (0 = not hidden)
+  var awayPoll = null;
+  function canBillAsAway(){
+    return !bunkerFrozen && !deadRun && runIsPersistable() && clocksArmed && termActive &&
+           !(huntArmed && !huntResolved);
+  }
+  function onTabHidden(){
+    if(!hiddenAt && canBillAsAway()){
+      clockStep();                                    // bill live time up to the moment it hid
+      if(deadRun) return;
+      if(clockTick){ clearInterval(clockTick); clockTick=null; }
+      clocksArmed=false;
+      hiddenAt=Date.now();
+    }
+    saveBunkerState();                                // while hidden, saves keep ts = hiddenAt
+  }
+  function resumeLiveFrom(ts){
+    hiddenAt=0;
+    if(deadRun || bunkerFrozen) return;
+    armClocks(); lastTickTs=ts;                       // bill the hidden seconds live, full rate
+    clockStep();
+  }
+  function onTabVisible(){
+    if(!hiddenAt) return;
+    var from=hiddenAt, gap=(Date.now()-from)/1000;
+    if(gap < OFFLINE_MIN_GAP_S){ resumeLiveFrom(from); return; }
+    skipTyping=true;                                  // finish any text that was mid-print
+    if(awayPoll) clearInterval(awayPoll);
+    var waited=0;
+    awayPoll=setInterval(function(){
+      waited+=200;
+      if(document.visibilityState==="hidden") return; // hidden again: the absence continues
+      var idle=!busy && form && form.style.display!=="none";
+      if(!idle && waited<30000) return;
+      clearInterval(awayPoll); awayPoll=null;
+      if(hiddenAt!==from) return;
+      if(deadRun || bunkerFrozen || !termActive || !idle){ resumeLiveFrom(from); return; }
+      hiddenAt=0;
+      resumeRun();                                    // the real return path and its report
+    }, 200);
+  }
+
   // Save on the way out. pagehide is the reliable one on mobile; the others are belt-and-braces.
   try{
     window.addEventListener("pagehide", saveBunkerState, false);
     window.addEventListener("beforeunload", saveBunkerState, false);
     document.addEventListener("visibilitychange", function(){
-      if(document.visibilityState==="hidden") saveBunkerState();
+      if(document.visibilityState==="hidden") onTabHidden(); else onTabVisible();   // HIDDEN_TAB_AWAY_V1
     }, false);
   }catch(e){}
   /* ================= end OFFLINE_DRAIN_V1 persistence ================== */
@@ -32294,6 +32445,7 @@ var SA_TUT_AVATARS = {
         '\n'+
         'They could not keep every system lit at once. There were\n'+
         'never enough fuses; that was always the point.\n'+
+        '\nAPEX ECHO kept the bunker alive for '+fmtSurvived(aliveS)+'.\n'+   // SURVIVAL_TIME_V1
         (awaySecsAtResume>0
           ? ('\nThe trace puts the failure during a '+fmtAway(awaySecsAtResume)+
              ' silence on their\nchannel. Nobody was at the panel when it went.\n')
@@ -32629,6 +32781,7 @@ var SA_TUT_AVATARS = {
   function bankLines(){
     return [
       {t:"// PRIVATE HOLDINGS \u2014 CONSOLIDATED LEDGER //", cls:"saTerm-amber", speed:12},
+      {t:"Old-world ledger. Money for fuses is in [M] NEW MARKETS.", cls:"saTerm-dim", speed:8},   // audit F7
       {t:"-------------------------------------------------", cls:"saTerm-dim", instant:true},
       {t:"CRYPTO", cls:"saTerm-bright", speed:8},
       {t:"  BTC............ "+fmtN(ME.BTC)+"  \u0243   ("+((ME.BTC/21000000*100).toFixed(1))+"% of all BTC that will ever exist)", speed:4},
@@ -33259,15 +33412,16 @@ var SA_TUT_AVATARS = {
   }
   function inventoryLine(){
     var i = ECON.inventory;
-    return "  FUSE POOL  stock:"+i.availableStock+"  installed:"+i.installed+
-           "  held:"+i.heldByPlayer+"  destroyed:"+i.destroyed+"  / total:"+i.totalSupply;
+    return "  FUSES  for sale "+i.availableStock+" \u00b7 held "+i.heldByPlayer+
+           " \u00b7 fitted "+i.installed+" \u00b7 destroyed "+i.destroyed;
   }
 
   function marketsList(){
     var head = [
       {t:"", instant:true},
       {t:"// NEW MARKETS \u2014 FUSE ECONOMY //", cls:"saTerm-amber", speed:0},
-      {t:"Fuses are scarce. Buy from the market with the right currency.", cls:"saTerm-dim", speed:0},
+      {t:"Invest to earn "+Math.round(SA_RENEW.EARN_PER_DAY*100)+"% a day. Collect: reinvest or pay out.", cls:"saTerm-dim", speed:0},
+      {t:"Each seller takes only its own currency. Each fuse sold raises every price.", cls:"saTerm-dim", speed:0},
       {t:"-------------------------------------------------", cls:"saTerm-dim", instant:true},
       {t: walletLine(),    cls:"saTerm-dim",  speed:0},
       {t: inventoryLine(), cls:"saTerm-dim",  speed:0},
@@ -33276,11 +33430,11 @@ var SA_TUT_AVATARS = {
     return runSeq(head).then(function(){
       return ECON.markets.reduce(function(ch, m, idx){
         return ch.then(function(){
-          var q = ECON.quote(m.id);
-          var line = "  ["+(idx+1)+"] "+((m.label+"          ").slice(0,14))+
-                     "  currency: "+m.currency+
-                     "   position: "+fmtMoney(m.position)+
-                     "   fuse: "+fmtMoney(q.price)+" "+m.currency;
+          var q = ECON.quote(m.id), r = ECON.ready(m.id);
+          var line = "  ["+(idx+1)+"] "+((m.label+"          ").slice(0,14))+" "+((m.currency+"     ").slice(0,5))+
+                     " fuse "+fmtMoney(q.price)+
+                     " \u00b7 invested "+fmtMoney(m.position)+
+                     (r>0 ? (" \u00b7 ready "+fmtMoney(r)) : "");
           return typeLine(line, {cls:"saTerm-menukey", speed:0});
         });
       }, Promise.resolve());
@@ -33326,40 +33480,51 @@ var SA_TUT_AVATARS = {
       {t:"", instant:true},
       {t:"// "+m.label.toUpperCase()+" \u2014 "+m.currency+" //", cls:"saTerm-amber", speed:0},
       {t:"-------------------------------------------------", cls:"saTerm-dim", instant:true},
-      {t:"  Position:  "+fmtMoney(m.position)+" "+m.currency, cls:"saTerm-dim", speed:0},
+      {t:"  Invested:  "+fmtMoney(m.position)+" "+m.currency+" \u00b7 earns "+fmtMoney(ECON.perDay(m.id))+" a day", cls:"saTerm-dim", speed:0},
+      {t:"  Ready:     "+fmtMoney(ECON.ready(m.id))+" "+m.currency+" to collect", cls:(ECON.ready(m.id)>0 ? "saTerm-bright" : "saTerm-dim"), speed:0},
       {t:"  Wallet:    "+fmtMoney(bal)+" "+m.currency, cls:"saTerm-dim", speed:0},
-      {t:"  Fuse cost: "+fmtMoney(q.price)+" "+m.currency+"   stock: "+ECON.inventory.availableStock, cls:"saTerm-dim", speed:0},
+      {t:"  Fuse:      "+fmtMoney(q.price)+" "+m.currency+" \u00b7 for sale "+ECON.inventory.availableStock+" \u00b7 you hold "+ECON.inventory.heldByPlayer, cls:"saTerm-dim", speed:0},
       {t:"-------------------------------------------------", cls:"saTerm-dim", instant:true},
-      {t:"  [R] REINVEST (spend "+m.currency+" to grow position)", cls:"saTerm-menukey", speed:0},
-      {t:"  [P] PAYOUT (cash position out in "+m.currency+")", cls:"saTerm-menukey", speed:0},
-      {t:"  [Y] BUY ONE FUSE", cls:"saTerm-menukey", speed:0},
-      {t:"  [I] INSTALL A HELD FUSE INTO A SYSTEM", cls:"saTerm-menukey", speed:0},
+      {t:"  [C] COLLECT EARNINGS (reinvest or pay out)", cls:"saTerm-menukey", speed:0},
+      {t:"  [R] INVEST FROM WALLET (it stays invested)", cls:"saTerm-menukey", speed:0},
+      {t:"  [Y] BUY ONE FUSE ("+fmtMoney(q.price)+" "+m.currency+")", cls:"saTerm-menukey", speed:0},
+      {t:"  [I] FIT A HELD FUSE", cls:"saTerm-menukey", speed:0},
       {t:"  [B] BACK", cls:"saTerm-menukey", speed:0}
     ];
     return runSeq(seq).then(function(){
-      busy=false; askInput("MARKET [R / P / Y / I / B] >", {mode:"market", maxlength:2});
+      busy=false; askInput(MARKET_PROMPT, {mode:"market", maxlength:2});
     });
   }
 
+  var MARKET_PROMPT = "MARKET [C / R / Y / I / B] >";   // MARKET_EARNINGS_V1
   function onMarket(val){
     var v = (val||"").trim().toUpperCase();
     hideInput(); busy=true;
     if(v==="B"){ return void marketsList(); }
     var m = ECON.marketById(mSel); if(!m){ return void marketsList(); }
     if(v==="R"){
-      typeLine("Amount of "+m.currency+" to reinvest?", {cls:"saTerm-dim", speed:0})
-        .then(function(){ busy=false; askInput("AMOUNT "+m.currency+" > ", {mode:"marketReinvest", maxlength:12}); });
+      var bal=ECON.wallet[m.currency]||0;
+      runSeq([
+        {t:"Invest how much "+m.currency+"? You hold "+fmtMoney(bal)+". Type an amount or ALL.", cls:"saTerm-dim", speed:0},
+        {t:"Invested money stays in the market. Only its earnings can be paid out.", cls:"saTerm-warn", speed:0}
+      ]).then(function(){ busy=false; askInput("INVEST "+m.currency+" > ", {mode:"marketReinvest", maxlength:12}); });
       return;
     }
-    if(v==="P"){
-      var paid = ECON.payout(m.id);
-      if(paid>0){
-        typeLine("Payout: +"+fmtMoney(paid)+" "+m.currency, {cls:"saTerm-bright", speed:0})
+    if(v==="C" || v==="P"){   // [P] kept as a shortcut for an old habit: collect, then choose
+      var ready=ECON.ready(m.id);
+      if(!(ready>0)){
+        var pd=ECON.perDay(m.id);
+        typeLine(pd>0 ? ("Nothing ready yet. This market earns "+fmtMoney(pd)+" "+m.currency+" a day.")
+                      : ("Nothing is invested here yet, so it earns nothing. Use [R] to invest."), {cls:"saTerm-warn", speed:0})
           .then(function(){ return wait(200); }).then(marketDetail);
-      } else {
-        typeLine("No position to cash out.", {cls:"saTerm-warn", speed:0})
-          .then(function(){ return wait(200); }).then(marketDetail);
+        return;
       }
+      runSeq([
+        {t:"Collect "+fmtMoney(ready)+" "+m.currency+". Reinvest or pay out?", cls:"saTerm-bright", speed:0},
+        {t:"  [R] REINVEST: add it to the "+fmtMoney(m.position)+" "+m.currency+" invested, so it earns too", cls:"saTerm-menukey", speed:0},
+        {t:"  [P] PAYOUT: put it in your wallet, to buy fuses", cls:"saTerm-menukey", speed:0},
+        {t:"  [B] BACK", cls:"saTerm-menukey", speed:0}
+      ]).then(function(){ busy=false; askInput("COLLECT [R / P / B] >", {mode:"marketCollect", maxlength:2}); });
       return;
     }
     if(v==="Y"){
@@ -33388,21 +33553,43 @@ var SA_TUT_AVATARS = {
         .then(function(){ busy=false; askInput("INSTALL [1-6] > ", {mode:"marketInstall", maxlength:2}); });
       return;
     }
-    typeLine("Enter R, P, Y, I or B.", {cls:"saTerm-warn", speed:8})
-      .then(function(){ busy=false; askInput("MARKET [R / P / Y / I / B] >", {mode:"market", maxlength:2}); });
+    typeLine("Enter C, R, Y, I or B.", {cls:"saTerm-warn", speed:8})
+      .then(function(){ busy=false; askInput(MARKET_PROMPT, {mode:"market", maxlength:2}); });
+  }
+  // MARKET_EARNINGS_V1: the terminal asks REINVEST or PAYOUT (the user's 27 July rule).
+  function onMarketCollect(val){
+    var v = (val||"").trim().toUpperCase();
+    hideInput(); busy=true;
+    var m = ECON.marketById(mSel); if(!m){ return void marketsList(); }
+    if(v==="R" || v==="P"){
+      var amt = ECON.collect(m.id, v==="R" ? "reinvest" : "payout");
+      if(amt>0) saveBunkerState();
+      var msg = !(amt>0) ? "Nothing to collect."
+        : (v==="R" ? ("Reinvested "+fmtMoney(amt)+" "+m.currency+". It now earns "+fmtMoney(ECON.perDay(m.id))+" "+m.currency+" a day.")
+                   : ("Paid out "+fmtMoney(amt)+" "+m.currency+" to your wallet. Wallet: "+fmtMoney(ECON.wallet[m.currency]||0)+" "+m.currency+"."));
+      typeLine(msg, {cls:(amt>0 ? "saTerm-bright" : "saTerm-warn"), speed:0})
+        .then(function(){ return wait(200); }).then(marketDetail);
+      return;
+    }
+    if(v==="B" || v==="X"){ return void marketDetail(); }
+    typeLine("Enter R, P or B.", {cls:"saTerm-warn", speed:8})
+      .then(function(){ busy=false; askInput("COLLECT [R / P / B] >", {mode:"marketCollect", maxlength:2}); });
   }
 
   function onMarketReinvest(val){
     var m = ECON.marketById(mSel); if(!m){ hideInput(); return void marketsList(); }
     hideInput(); busy=true;
-    var amt = parseFloat((val||"").trim());
-    if(!(amt>0)){
+    var raw = (val||"").trim().toUpperCase();
+    var amt = (raw==="ALL" || raw==="A") ? Math.floor((ECON.wallet[m.currency]||0)*100)/100 : parseFloat(raw.replace(/,/g,""));
+    if(!(amt>0) || !isFinite(amt)){
       typeLine("Invalid amount.", {cls:"saTerm-warn", speed:0})
         .then(function(){ return wait(150); }).then(marketDetail);
       return;
     }
     var ok = ECON.reinvest(m.id, amt);
-    typeLine(ok? ("Reinvested "+fmtMoney(amt)+" "+m.currency+".") : ("Reinvest failed \u2014 not enough "+m.currency+"."),
+    if(ok) saveBunkerState();
+    typeLine(ok? ("Invested "+fmtMoney(amt)+" "+m.currency+". This market now earns "+fmtMoney(ECON.perDay(m.id))+" "+m.currency+" a day.")
+               : ("Not enough "+m.currency+". You hold "+fmtMoney(ECON.wallet[m.currency]||0)+"."),
       {cls: ok?"saTerm-bright":"saTerm-warn", speed:0})
       .then(function(){ return wait(200); }).then(marketDetail);
   }
@@ -33553,7 +33740,7 @@ var SA_TUT_AVATARS = {
     var v=(val||"").trim().toUpperCase();
     hideInput(); busy=true;
     if(v==="B"){ typeLine("> BACK", {cls:"saTerm-dim", instant:true}).then(function(){ return wait(120); })
-        .then(function(){ return runSeq(bankLines()); }).then(function(){ busy=false; askInput("BANK [V / B] >", {mode:"bank", maxlength:2}); }); return; }
+        .then(function(){ return runSeq(bankLines()); }).then(function(){ busy=false; askInput("BANK [V / M / B] >", {mode:"bank", maxlength:2}); }); return; }
     var n=parseInt(v,10);
     if(n>=1 && n<=VAULTS.length){ openVault(VAULTS[n-1]); }
     else { typeLine("No such vault.", {cls:"saTerm-warn", speed:8}).then(function(){ busy=false; askInput("OPEN VAULT [1-"+VAULTS.length+" / B] >", {mode:"vaults", maxlength:2}); }); }
@@ -33972,7 +34159,7 @@ var SA_TUT_AVATARS = {
       typeLine("> BANK", {cls:"saTerm-dim", instant:true})
         .then(function(){ return runSeq(bankLines()); })
         .then(function(){ return wait(150); })
-        .then(function(){ busy=false; askInput("BANK [V / B] >", {mode:"bank", maxlength:2}); });
+        .then(function(){ busy=false; askInput("BANK [V / M / B] >", {mode:"bank", maxlength:2}); });
     } else if(v==="3"){
       typeLine("> DEPARTMENTS", {cls:"saTerm-dim", instant:true}).then(departmentsList);
     } else if(v==="4"){
@@ -34268,6 +34455,7 @@ var SA_TUT_AVATARS = {
     try{ ECON._reset(); }catch(e){}   // LOCAL_ECONOMY_V1: fresh wallet, markets, vaults, inventory each run.
     try{ HOME._reset(); }catch(e){}   // HOME_NODE_V1: never carry sleep across a new run.
     bunkerFrozen=false; // SINGLE_PLAYER_FREEZE_V1: a brand new run is never frozen
+    aliveS=0; sabLevel=null; hiddenAt=0;   // SURVIVAL_TIME_V1, SABOTAGE_SHARE_V1, HIDDEN_TAB_AWAY_V1
     disarmHunt(); huntArmed=false; huntResolved=false; huntStart=0; bunkerCleared=false; termActive=true;
     bunkerPass=genBunkerPass(); bunkerPassTries=0; bunkerLocked=false; bunkerUnlocked=false; // fresh rotating gate each run (death -> open() -> new key + re-lock)
     resetFuses(); moveFrom=-1; disarmClocks(); disarmFuseTrigger(); fusePanelOpen=false; pendingBlown=0; bunkerLive=false; // fuse grid back to SMART BUILD (all 4/4), clocks off, trigger disarmed, no pending damage, bunker not yet live, each game
@@ -34686,6 +34874,7 @@ var SA_TUT_AVATARS = {
       else if(mode==="markets") onMarkets(v);
       else if(mode==="market") onMarket(v);
       else if(mode==="marketReinvest") onMarketReinvest(v);
+      else if(mode==="marketCollect") onMarketCollect(v);
       else if(mode==="marketInstall") onMarketInstall(v);
       else if(mode==="vaultSeed") onVaultSeed(v);
       else if(mode==="vaultSeedPw") onVaultSeedPw(v);

@@ -10,8 +10,10 @@
 // time-skip, which must reproduce a real closed-tab absence exactly and must never
 // appear on the public site.
 //
-// NOT covered, because the user has not approved them yet: market earnings over
-// time, the shop stock size, and the F1/F2 fixes.
+// Play-test proposals (2026-11-08, the user asked for a fair, fun build to test):
+// market earnings over time with collect -> reinvest or payout, a 32-fuse stock,
+// prices every currency can pay, the F1/F2 fixes, real time left at low POWER,
+// sabotage progress keeping its share, and the survival day count.
 //
 // RUN: node tests/renewable_clocks_phase2.cjs
 
@@ -34,6 +36,7 @@ function terminalScript() {
 
 const HOSTS = {
   prod:  { protocol: 'https:', hostname: 'start-again.pplx.app' },
+  test:  { protocol: 'https:', hostname: 'raw.githack.com' },
   local: { protocol: 'http:',  hostname: 'localhost' },
   file:  { protocol: 'file:',  hostname: '' },
 };
@@ -109,6 +112,8 @@ function makeHarness(storage = {}, opts = {}) {
     ev: s => context.__audit.ev(s),
     now: () => now, setNow: x => { now = x; }, advance: ms => { now += ms; },
     lines: () => get('saTermScreen').children.map(c => c.innerHTML),
+    fireDoc: e => (docEv[e] || []).forEach(f => f()),
+    fireWin: e => (winEv[e] || []).forEach(f => f()),
   };
 }
 
@@ -152,15 +157,26 @@ function state(h) {
 }
 
 // ---------- settings block ----------------------------------------------
-test('one settings block holds the dev time-skip steps and no unapproved balance numbers', () => {
+test('one settings block holds every new number, each balance number labelled a proposal', () => {
   const h = makeHarness();
   const steps = h.ev('JSON.stringify(SA_RENEW.DEV_SKIP_STEPS)');
   eq(steps, JSON.stringify([
     { label: '+10m', secs: 600 }, { label: '+1h', secs: 3600 }, { label: '+8h', secs: 28800 },
     { label: '+24h', secs: 86400 }, { label: '+3d', secs: 259200 },
   ]), 'time-skip steps must be exactly the user\'s list');
-  eq(h.ev('Object.keys(SA_RENEW).join(",")'), 'DEV_SKIP_STEPS,DEV_PRESETS',
-    'earnings rate and stock size stay out until the user approves them');
+  eq(h.ev('Object.keys(SA_RENEW).join(",")'), 'EARN_PER_DAY,SHOP_STOCK,PRICE_UNITS,STARTER_GRANT,DEV_SKIP_STEPS,DEV_PRESETS',
+    'the settings block holds the play-test proposals and the dev tooling, nothing else');
+  eq(h.ev('SA_RENEW.EARN_PER_DAY'), 0.22, 'earnings proposal');
+  eq(h.ev('SA_RENEW.SHOP_STOCK'), 32, 'stock proposal');
+  eq(h.ev('JSON.stringify(SA_RENEW.PRICE_UNITS)'), JSON.stringify({ USD: 1, XRP: 1, GEARS: 0.2, BTC: 0.1, ETH: 0.01 }), 'price units proposal');
+  eq(h.ev('JSON.stringify(SA_RENEW.STARTER_GRANT)'), JSON.stringify({ BTC: 25, XRP: 250, USD: 250, ETH: 2.5, GEARS: 50 }), 'starter grant proposal');
+  const block = HTML.slice(HTML.indexOf('RENEWABLE_CLOCKS_SETTINGS_V1 (2026-11-08)'), HTML.indexOf('end RENEWABLE_CLOCKS_SETTINGS_V1'));
+  for (const k of ['EARN_PER_DAY', 'SHOP_STOCK', 'PRICE_UNITS', 'STARTER_GRANT']) {
+    const before = block.slice(0, block.indexOf(k + ':'));
+    assert(/\/\/ PROPOSAL[^\n]*\n(\s*\/\/[^\n]*\n)*\s*$/.test(before), `${k} carries a PROPOSAL label`);
+  }
+  assert(/var ECON_TOTAL_SUPPLY = SA_RENEW\.SHOP_STOCK;/.test(HTML), 'the stock comes from the settings block');
+  assert(/var ECON_STARTER_GRANT = SA_RENEW\.STARTER_GRANT;/.test(HTML), 'the grant comes from the settings block');
 });
 
 // ---------- dev gate ------------------------------------------------------
@@ -177,9 +193,13 @@ test('the dev time-skip never runs on the public site', () => {
   assert(!h.lines().some(l => l.includes('DEV TIME-SKIP')), 'no dev line on the public FUSE PANEL');
 });
 
-test('the dev time-skip is available on local copies (localhost and file://)', () => {
+test('the dev time-skip is available on local copies and the private play-test link', () => {
   eq(makeHarness({}, { host: HOSTS.local }).ev('SA_DEV_HOST'), true, 'localhost is a dev host');
   eq(makeHarness({}, { host: HOSTS.file }).ev('SA_DEV_HOST'), true, 'file:// is a dev host');
+  eq(makeHarness({}, { host: HOSTS.test }).ev('SA_DEV_HOST'), true, 'the raw.githack.com play-test link is a dev host');
+  for (const hostname of ['start-again.pplx.app', 'www.start-again.pplx.app', 'evil-raw.githack.com.example', 'githack.com']) {
+    eq(makeHarness({}, { host: { protocol: 'https:', hostname } }).ev('SA_DEV_HOST'), false, hostname + ' is not a dev host');
+  }
 });
 
 // ---------- time-skip == real absence --------------------------------------
@@ -320,10 +340,15 @@ test('previews and the report read the same clock as the panel, even at low POWE
   liveRun(h, { defense: 4, air: 2, power: 3, water: 4, thermal: 4, comms: 4 },
     'rem.air = CLOCK_MIN.air[2] * 0.5;');
   const panel = h.ev('liveLabel("air")').replace('\u25b8 ', '');
-  eq(panel, '12h 0m', 'the panel clock at POWER 3/4');
-  eq(h.ev('fitPreview("air")'), '12h 0m \u2192 1d 0h left', 'the fit preview starts from the panel reading');
+  eq(panel, '8h 0m', 'the panel shows the REAL time left at POWER 3/4 (12h of budget at x1.5)');
+  eq(h.ev('fitPreview("air")'), '8h 0m \u2192 16h 0m left', 'the fit preview starts from the panel reading');
   const soon = h.ev('replacementLines().map(function(l){ return l.t; }).join("\\n")');
-  assert(soon.includes('Soonest failure you can see: AIR in 12h 0m.'), 'the report matches the panel: ' + soon);
+  assert(soon.includes('Soonest failure you can see: AIR in 8h 0m.'), 'the report matches the panel: ' + soon);
+  // and that reading is the truth: AIR fails 8 hours later, not 12
+  h.ev(`BASELINE_SECS = 0; advanceBy(${8 * HR - 60}, false, ${8 * HR - 60})`);
+  eq(h.ev('deadRun || FUSE.air.lit === 0'), false, 'alive a minute before');
+  const died = h.ev(`advanceBy(120, false, 120)`);
+  eq(died, 'air', 'AIR fails when the panel said it would');
 });
 
 test('coin never buys time: only fitting a fuse changes a clock', () => {
@@ -374,7 +399,7 @@ test('the market install uses the FUSE PANEL numbering', () => {
 test('the fuse ledger counts the grid: opening, decay, buy, fit, Home and reload', () => {
   const h = makeHarness();
   let inv = ledger(h);
-  eq(inv.totalSupply, 48, '24 grid + 24 shop fuses');
+  eq(inv.totalSupply, 56, '24 grid + 32 shop fuses');
   eq(inv.installed, 24, 'the grid starts full');
   eq(inv.destroyed, 0, 'nothing destroyed yet');
   h.ev('termActive = true; bunkerLive = true; fusePanel();');   // the opening assault
@@ -387,7 +412,7 @@ test('the fuse ledger counts the grid: opening, decay, buy, fit, Home and reload
   h.ev('ECON.wallet.USD = 1000; ECON.buyFuse("USA"); ECON.buyFuse("USA");');
   h.ev('fitSpare("air")');
   inv = ledger(h);
-  eq(inv.availableStock, 22, 'two bought');
+  eq(inv.availableStock, 30, 'two bought');
   eq(inv.heldByPlayer, 1, 'one held');
   eq(inv.installed, h.ev(SUM_LIT), 'installed equals the grid');
   assert(balanced(inv), 'ledger balances');

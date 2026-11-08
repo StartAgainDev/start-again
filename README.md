@@ -42,8 +42,10 @@ required; just open `index.html` in a browser to play).
 Open `index.html` in any modern browser.  
 No server or dependencies needed.
 
-On a local copy (`file://` or `localhost`) the bunker's FUSE PANEL also has a hidden
-dev time-skip, `[T]`. See [`docs/renewable-clocks-phase2.md`](docs/renewable-clocks-phase2.md).
+On a local copy (`file://` or `localhost`) or the raw.githack.com play-test link, the
+bunker's FUSE PANEL also has a hidden dev time-skip, `[T]`. It never appears on the public
+site. See [`docs/renewable-clocks-phase2.md`](docs/renewable-clocks-phase2.md) for the
+play-test link, the proposals being tested and how to test them.
 
 ## Regression checks
 

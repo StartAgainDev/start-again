@@ -1,42 +1,94 @@
-# Renewable clocks, Phase 2 (part 1)
+# Renewable clocks, Phase 2 (play-test build)
 
-Development build only (`v8.90-dev`, branch `feat/renewable-clocks-phase2`). Nothing here is live. The public site stays on `release/terminal-pacing-2026-10-03` at `18e4ffa` until you say yes.
+Development build only (`v8.90-dev`, branch `feat/renewable-clocks-phase2`, draft PR #8). Nothing here is live. The public site stays on `release/terminal-pacing-2026-10-03` at `18e4ffa` until you say yes.
 
-## The approved rule (A)
+Part 1 (commit `e0d9942`) added the approved refresh rule A, the return report, the fuse ledger fix and the dev time-skip. Part 2 makes the build fair and fun to play-test: markets earn over time, every currency can buy fuses, and the known loopholes from the Phase 1 audit are closed.
+
+## Play-test link
+
+The play-test link serves this branch straight from GitHub through raw.githack.com. It is unlisted, not private: anyone with the link can play it. The PR description has a link pinned to the exact commit. This one always follows the branch, a few minutes behind:
+
+`https://raw.githack.com/StartAgainDev/start-again/feat/renewable-clocks-phase2/index.html`
+
+- Saves are kept in your browser for raw.githack.com, separately from the public site.
+- The dev time-skip `[T]` shows on this link and on local copies. It never shows on start-again.pplx.app.
+
+**A quick test run:**
+
+1. Click the war-room picture to enter the bunker and play the opening.
+2. Go to `[2] BANK → [M] MARKETS`, pick a market, `[R]` invest part of the wallet and `[Y]` buy a fuse.
+3. Go to `[6] NETWORK → [1] LOCAL → [F]` (FUSE PANEL), `[I]` fit the fuse.
+4. Press `[T]` and skip `+24h`. Read the return report: fuses lost, what the markets earned, what to do next.
+5. Back at the market, `[C]` collect, then `[R]` reinvest or `[P]` pay out.
+6. Close the tab, or leave it in the background, and come back later. Both are billed the same way.
+
+## Your approved rule (A)
 
 Clocks are never bought with coin. You buy a fuse at a market vendor and fit it where one blew, as in BioSys.
 
 - A fitted fuse raises that system one level. The time left keeps the same share of the bigger level. Example: AIR at 2/4 with half its time left (12h) becomes 3/4 with half of 48h (24h).
-- Fitting the fourth fuse stops the drain. The spent reserve then refills over 24 hours, using the existing `FULL_CAPACITY_REFILL_S`.
-- Each fit uses one held fuse, once. Coin, investing, moving fuses, reloading and repeated taps never add time.
+- Fitting the fourth fuse stops the drain. The spent reserve then refills over 24 hours (the existing `FULL_CAPACITY_REFILL_S`).
+- Each fit uses one held fuse, once. Coin, investing, moving fuses, reloading, changing screens and repeated taps never add time.
 
-Rule A needs no new numbers.
+## Proposals switched on for the play-test
 
-## What changed
+Each of these is a labelled proposal for you to approve, change or reject. They all sit in one place: `SA_RENEW` in `index.html` (search for `RENEWABLE_CLOCKS_SETTINGS_V1`).
 
-- **FUSE PANEL `[I] FIT A SPARE`**:
-  - Lists every system with a preview, for example `AIR 2/4 → 3/4  21h 32m → 1d 19h left`, `drain stops · full again in 12h 0m`, `sabotage 1 per 24h → 1 per 48h`, `+1 sensor channel` or `life support x1.5 → x1.0`.
-  - The previews respect COMMS. A system with no sensor on it says so instead of showing a countdown.
-  - The fit is saved straight away. The result line stays under the redrawn panel, next to the prompt.
-- **Market `[I] INSTALL`** now uses the same fit and the same numbering as the FUSE PANEL (1 DEFENSE, 2 AIR, 3 POWER, 4 WATER, 5 THERMAL, 6 COMMS).
-- **Buying a fuse** is saved straight away.
-- **Return report** after a real absence. It now lists:
-  - each fuse lost while you were away, with its cause (`burned out` for baseline decay, `sabotaged` for DEFENSE sabotage) and when it went, or `No fuses failed while you were away.`
-  - spares held, market stock, the next price and which currencies can pay
-  - how to replace a fuse (`[2] BANK → [M] MARKETS`, then `[I]` on the FUSE PANEL)
-  - the soonest failure you can see. This respects COMMS.
-- **Fuse ledger (audit F5)**: the 24 fuses in the grid are now counted.
-  - `installed` always equals the fuses lit in the grid.
-  - `destroyed` is whatever is not in stock, held or installed.
-  - Older saves are migrated on load.
-- **Panel wording**: `a blown fuse is gone for good.` replaces `fuses are scarce — they only move`, because replacements now come from the market.
-- **One settings block**: `SA_RENEW` in `index.html` (search for `RENEWABLE_CLOCKS_SETTINGS_V1`). It holds only the dev time-skip steps and the dev starting grids. It contains no balance numbers.
+| Setting | Proposal | Before | Why |
+|---|---|---|---|
+| `EARN_PER_DAY` | Each market earns 22% a day of what is invested in it, in its own currency | Instant +15% on every reinvest and 100% back on cash-out | Closes the instant profit loop (audit F3). Earnings build up on real time, AdVenture Communist style |
+| `SHOP_STOCK` | 32 fuses for sale, shared by every vendor, never refilled | 24 | Lets a diligent player reach about 35 days, as in your notes |
+| `PRICE_UNITS` | First fuse: 100 USD = 100 XRP = 20 GEARS = 10 BTC = 1 ETH | 100 of any currency | BTC and ETH could never reach 100, so two vendors could never sell (audit F6) |
+| `STARTER_GRANT` | 25 BTC, 250 XRP, 250 USD, 2.5 ETH, 50 GEARS | 50 BTC, 500 XRP, 500 USD, 5 ETH, 100 GEARS | Halved because all five currencies now buy fuses; the old grant made a casual player as safe as a diligent one |
 
-## Dev time-skip (local copies only)
+Unchanged, and still unapproved placeholders from Local Economy v1: the base price of 100 and the shared price rise (each fuse sold makes the next one 8% dearer at every vendor). All locked rules are unchanged.
 
-The time-skip only appears on `file://`, `localhost` or `127.0.0.1`. The public site never shows it. This was checked in Chromium on a non-local address.
+**How earnings work:**
 
-**To try it:**
+- A market earns on wall-clock time: live, with the tab closed, with the tab hidden and in the dev time-skip. Away time is not slowed to 0.35×; that only applies to life support.
+- Nothing is earned while Single Player has the bunker frozen.
+- `[C] COLLECT` asks the question from your 27 July note: `[R] REINVEST` adds the earnings to the investment so it earns more; `[P] PAYOUT` puts them in your wallet to buy fuses.
+- Money you invest stays invested. Only earnings come out.
+- Collecting straight after investing gives nothing, so tapping can't make money.
+
+## Fixes (no new numbers)
+
+- **F1, door choice saved.** An Idle run stays Idle after a reload. `[5] PROCEED` is no longer offered, so a reload can't be used to take the Single Player door and pause the bunker for free. Single Player runs keep their route back.
+- **F2, hidden tab = closed tab.** A tab left in the background stops its live clock. When you come back after 20 seconds or more, the time is billed exactly like a closed tab (0.35× for the first 12 h) and you get the return report. A shorter hide is billed live at full rate, so tab-flicking gains nothing. Hiding the tab never pauses the opening assassination hunt.
+- **F14, real time left.** Every countdown now shows real time to failure, including the effect of weak POWER. At POWER 3/4 a clock that fails in 8 h says 8 h (it used to say 12 h).
+- **F13.** The POWER row reads `x1.0 life support`, because POWER changes the life-support clocks only.
+- **F10.** Bank prompts read `BANK [V / M / B]`.
+- **F7.** The Bank ledger says `Old-world ledger. Money for fuses is in [M] NEW MARKETS.`
+- **Sabotage share.** When DEFENSE changes level, sabotage progress keeps its share of the interval. Example: 30 h of the 48 h at 3/4, then decay drops DEFENSE to 2/4, gives 15 h of the 24 h. The next sabotage comes 9 h later instead of instantly. The sabotage rates themselves are unchanged.
+- **COMMS in the return report.** The report now hides countdowns that COMMS isn't watching (`NO SIGNAL`), like the FUSE PANEL. It used to print every countdown.
+- **Survival time.** The return report header shows `DAY N`. The death mail says `APEX ECHO kept the bunker alive for X days, Y hours.` Frozen time doesn't count.
+
+## Runway model
+
+The model runs the real game code from this branch and scripts only the player's choices. Each line is the median of 10 random seeds (range in brackets).
+
+| Player | Real offline rules | Every hour at full rate (harsh) |
+|---|---|---|
+| Never buys, only moves fuses | 6 days (5–6.3) | 3.3 days |
+| Spends the starting wallet, never invests | 10 days (9–12) | 9.3 days |
+| Invests once, checks in daily (casual) | 22 days (20–24) | 20.6 days |
+| Invests once, checks in twice a day | 25 days (23.5–28.5) | 22.3 days |
+| Every 6 h, reinvests the surplus (diligent) | 37.3 days (35.8–37.8); stock sold out about day 32 | 34.4 days |
+
+- Your notes target about 20 days for casual play and up to about 35 for diligent play. The proposals land there.
+- Earnings rate sensitivity (real rules, casual / diligent): 15% gives 14 / 16.5 days, 20% gives 21 / 26, 25% gives 25 / 37.3. 22% with a 24-fuse stock gives 22 / 29.3.
+- All runs end through WATER or THERMAL, because the scripted player keeps AIR and DEFENSE full by moving fuses.
+
+## Dev time-skip
+
+The time-skip appears on local copies (`file://`, `localhost`, `127.0.0.1`) and on the raw.githack.com play-test link only.
+
+- On the FUSE PANEL, press `[T]`: `[1] +10m  [2] +1h  [3] +8h  [4] +24h  [5] +3d`, and `[P]` for starting fuses (SECURE, TYPICAL, FRAGILE or ALL FULL).
+- A skip saves the run, back-dates the save as if the tab had been closed that long, and reopens the bunker through the normal return path, so it uses the locked rules: AIR, WATER and THERMAL at 0.35× for the first 12 h then 1.0×, decay and sabotage at full rate, gaps under 20 s ignored. Markets earn for the skipped time.
+- You see the real report, then a before → after block. An absence that would kill the run shows the real death screen and clears the save.
+- A skip during Single Player adds no time.
+
+To run it locally instead:
 
 ```
 git clone https://github.com/StartAgainDev/start-again.git
@@ -45,72 +97,24 @@ git checkout feat/renewable-clocks-phase2
 python3 -m http.server 8000
 ```
 
-1. Open http://localhost:8000/, or open `index.html` directly.
-2. Click the war-room picture to enter the bunker, and play until the FUSE PANEL appears. From the menu, the route is `[6] NETWORK → [1] LOCAL → [F]`.
-3. Press `[T]`.
+Then open http://localhost:8000/.
 
-**The `[T]` menu:**
+## Part 1 summary (commit e0d9942)
 
-- `[1] +10m  [2] +1h  [3] +8h  [4] +24h  [5] +3d`
-- `[P]` starting fuses: SECURE, TYPICAL, FRAGILE (19 fuses each, as in the Phase 1 audit) or ALL FULL.
-
-**How it works:**
-
-- A skip saves the run, back-dates the save as if the tab had been closed that long, and reopens the bunker through the normal return path.
-- The catch-up therefore uses the locked rules:
-  - AIR, WATER and THERMAL drain at 0.35× for the first 12h, then 1.0×.
-  - Decay and sabotage run at full rate.
-  - Gaps under 20 seconds are ignored.
-- You see the real report, followed by a before → after block.
-- If the absence would kill the run, you get the real death screen and the save is cleared, as on a real return.
-- A skip during Single Player adds no time, as on a real return.
+- **FUSE PANEL `[I] FIT A SPARE`** lists every system with a preview (for example `AIR 2/4 → 3/4  21h 32m → 1d 19h left`). Previews respect COMMS. The fit is saved straight away.
+- **Market `[I] FIT`** uses the same fit and numbering as the FUSE PANEL.
+- **Return report** lists each fuse lost while away with its cause and time, spares held, market stock, which currencies can pay, how to replace a fuse and the soonest failure you can see.
+- **Fuse ledger (audit F5):** the 24 fuses in the grid are counted, so stock + held + fitted + destroyed always adds up. Older saves are migrated on load.
 
 ## Tests
 
-- `npm test` runs 6 suites with 115 checks: the 96 existing checks plus 19 new ones in `tests/renewable_clocks_phase2.cjs`. All pass.
-- The new checks cover:
-  - the settings block
-  - the public/local/file gate
-  - every skip matching a real closed-tab absence (3 grids × 5 steps)
-  - no time added during Single Player
-  - the return report lines, COMMS limits and the all-clear
-  - rule A: share of time, 4/4 stop and the 24h refill
-  - previews for each system
-  - previews matching the panel clock at low POWER
-  - coin never buying time
-  - moving or reloading adding no time
-  - repeated taps not fitting twice
-  - market numbering
-  - the ledger through the opening, decay, buying, fitting, Home and reload
-  - old-save migration
-  - the version label
-- **Browser check** (Chromium; desktop 1280 px, phone 390 px, and a non-local address):
-  - covered the return report, buying at the market, fitting on the FUSE PANEL, the presets, and skips of +24h and +3d
-  - no page errors and no text running off the screen
-  - after the TYPICAL preset, +24h and then +3d ended on the real AIR death screen. This fits the audit's runway model, where a player who never buys lasts about 3.3 days
-
-## Waiting for your decision (not built)
-
-1. **Market earnings.** Proposed: 22% per day (or 20% or 25%), collected as reinvest or payout, with the money you invest staying in. Until this replaces the instant profit loop (F3), currency is unlimited, so fuses are effectively free. Phase 2 should not go live without it.
-2. **Shop stock:** 24 or 32 fuses.
-3. **F1 and F2 fixes.** F1 is a free pause via reload → Single Player door. F2 is an open background tab draining 2.86× faster with no report. They could go in Phase 2, go out as a live hotfix, or wait.
-
-## Noticed, not changed
-
-- **F14, weak POWER shows too much time left.** This affects the panel, the bunker controls board and the return report. The clock shows the time left at full POWER, but runs faster.
-  - AIR showing `12h 0m left` actually fails after 8h at POWER 3/4, 6h at 2/4, 4h at 1/4 and 2.4h at 0/4. The live build does the same.
-  - The new previews and the soonest-failure line use the same reading, so the screens agree with each other.
-  - Options:
-    - A: show real time left everywhere (recommended; it matches the emergency rescue and Home checks, which already use real time)
-    - B: keep the clock reading and add a real-time note when POWER is low
-    - C: leave it as it is
-- **Sabotage progress carries over when DEFENSE drops.** Example: decay knocks DEFENSE from 3/4 to 2/4 after 24h of sabotage progress. The next sabotage then comes at once, because those 24h already count toward the new 1-per-24h rate. Two fuses can go in the same minute. This is existing behaviour and is noted only.
+- `npm test` runs 7 suites with 134 checks. All pass.
+  - `tests/renewable_clocks_phase2.cjs` (19): rule A, the return report, the ledger and the time-skip.
+  - `tests/playtest_balance_v1.cjs` (19): no instant profit; live, closed-tab and skipped time earn the same; nothing earned while frozen; collect and payout; earnings survive a reload; every currency can buy; 32 in stock; F1; F2 (8-hour hide, short hide, hunt); the sabotage share; the day count; the report's market and COMMS lines.
+- **Browser check** (Chromium, desktop 1280 px and phone 390 px): the return report, investing, buying, fitting, a +24h skip with earnings, collect and payout, a 25-second hidden tab, the markets list and the death mail. No page errors and no text running off the screen.
 
 ## Rollback
 
 - Tag `rollback/pre-phase2-bf05324` marks `main` before this work (`bf05324`).
-- To roll back, do one of these:
-  - don't merge the branch
-  - revert the merge commit
-  - reset a branch to the tag
+- To roll back: don't merge the branch, revert the merge commit, or reset a branch to the tag.
 - The live site is unchanged.
