@@ -164,7 +164,7 @@ test('one settings block holds every new number, each balance number labelled a 
     { label: '+10m', secs: 600 }, { label: '+1h', secs: 3600 }, { label: '+8h', secs: 28800 },
     { label: '+24h', secs: 86400 }, { label: '+3d', secs: 259200 },
   ]), 'time-skip steps must be exactly the user\'s list');
-  eq(h.ev('Object.keys(SA_RENEW).join(",")'), 'EARN_PER_DAY,SHOP_STOCK,PRICE_UNITS,STARTER_GRANT,INVEST_STEPS,TAP_SETTLE_MS,LIVE_DECIMALS_MAX,DEV_SKIP_STEPS,DEV_PRESETS',
+  eq(h.ev('Object.keys(SA_RENEW).join(",")'), 'EARN_PER_DAY,SHOP_STOCK,PRICE_UNITS,STARTER_GRANT,INVEST_STEPS,TAP_SETTLE_MS,LIVE_DECIMALS_MAX,BEST_MOVE,DEV_SKIP_STEPS,DEV_PRESETS',
     'the settings block holds the play-test proposals and the dev tooling, nothing else');
   eq(h.ev('SA_RENEW.EARN_PER_DAY'), 0.22, 'earnings proposal');
   eq(h.ev('SA_RENEW.SHOP_STOCK'), 32, 'stock proposal');

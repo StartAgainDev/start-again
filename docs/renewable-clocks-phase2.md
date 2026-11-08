@@ -2,7 +2,7 @@
 
 Development build only (`v8.90-dev`, branch `feat/renewable-clocks-phase2`, draft PR #8). Nothing here is live. The public site stays on `release/terminal-pacing-2026-10-03` at `18e4ffa` until you say yes.
 
-Part 1 (commit `e0d9942`) added the approved refresh rule A, the return report, the fuse ledger fix and the dev time-skip. Part 2 makes the build fair and fun to play-test: markets earn over time, every currency can buy fuses, and the known loopholes from the Phase 1 audit are closed. Part 3 turns the Bank into one board you can click or tap, and makes every menu option clickable. Part 4 makes that board live: earnings count up in real time, each market shows a meter and countdown to its next fuse, and the soonest failure counts down.
+Part 1 (commit `e0d9942`) added the approved refresh rule A, the return report, the fuse ledger fix and the dev time-skip. Part 2 makes the build fair and fun to play-test: markets earn over time, every currency can buy fuses, and the known loopholes from the Phase 1 audit are closed. Part 3 turns the Bank into one board you can click or tap, and makes every menu option clickable. Part 4 makes that board live: earnings count up in real time, each market shows a meter and countdown to its next fuse, and the soonest failure counts down. Part 5 adds BEST MOVE: one line on the board says the best next step, and `[G] DO IT` does it, one tap at a time.
 
 ## Play-test link
 
@@ -22,6 +22,7 @@ The play-test link serves this branch straight from GitHub through raw.githack.c
 4. Go to `[6] NETWORK → [1] LOCAL → [F]` (FUSE PANEL). Press `[T]` and skip `+24h`.
 5. Read the return report, then `[M] BANK`. COLLECT ALL, then REINVEST ALL or PAY OUT ALL.
 6. Close the tab, or leave it in the background, and come back later. Both are billed the same way.
+7. On the Bank board, tap `[G] DO IT` until it says ALL GOOD. Each tap does one step, and only that step's button lights up.
 
 ## Your approved rule (A)
 
@@ -132,6 +133,84 @@ What I didn't copy: AdCap's lump payout at the end of each timer. Your markets e
 
 Technical detail: the moving numbers are driven by the browser's animation frame (`requestAnimationFrame`). Browsers pause it in a background tab ([MDN](https://developer.mozilla.org/en-US/docs/Web/API/Window/requestAnimationFrame)), so a hidden tab costs nothing, and rule F2 still bills that time when you come back. They only change text and bar widths. The board itself still redraws at most once a second, and only when a button or label changes, so a tap is never lost to a redraw.
 
+## Best move (part 5)
+
+You asked me to study the optimiser tools players use and build that in: easy, fun and functional. Idle-game players build optimisers that tell them what to buy next. Part 5 builds one into the Bank board, so nobody needs a spreadsheet to play well. No game number changed.
+
+**What you see:**
+
+- A **BEST MOVE** line at the top of the Bank board says the single best next step, for example `Buy a fuse at El Salvador (10 BTC) and fit it into AIR.`
+- **`[G] DO IT`** does that one step, using the same action as the button. Tap it again for the next step. A visit takes about 3 to 5 taps.
+- Only the button for that step lights up. Every other button still works, so you can ignore the advice and play your own way.
+- **COLLECT shows both answers** before you choose, for example `REINVEST: earns 4.03 a day (now 3.3) · PAY OUT: wallet 3.3 BTC; a fuse costs 13.6`.
+- **The latest result stays in view** at the bottom of the screen, so a tap on DO IT always shows what it did, on a phone too.
+- When nothing needs doing it says `ALL GOOD. Nothing needs a fuse, and your money is earning.` and shows no button. While you wait for money it counts down, for example `WATER needs a fuse. Your earnings pay for one at India in 1d 11:20:37`.
+- The return report names the best move and where to do it, for example `BEST MOVE  [M] BANK: Collect all and pay out, then invest the spare.`
+- When the Bank can't pay for AIR or DEFENSE yet, DO IT takes you to the FUSE PANEL, which shows the keys once: `[M] MOVE, then 6 (COMMS), then 2 (AIR). You lose a sensor, not time.` It never moves a fuse itself, and a locked bunker still asks for the password.
+- A coin sound and a short flash when money moves or a fuse becomes affordable. The DO IT button pulses gently. Both stop if the device asks for reduced motion.
+
+To see it: open `[2] BANK` and tap `[G] DO IT` until it says ALL GOOD. Then skip `+24h` with `[T]` on the FUSE PANEL, come back and do it again.
+
+**The advice, in order** (the routine that lasted longest in the model):
+
+1. **Fix what is broken first.** A spare you hold goes in first. Otherwise buy at the market whose wallet holds the most fuses' worth, or collect and pay out the market whose earnings cover a fuse. The soonest failure you can see comes first, then AIR, DEFENSE, POWER, WATER and THERMAL. COMMS is never suggested, because it only changes what you see.
+2. **Collect once a visit.** Pay out if an earning wallet holds less than one fuse's worth, otherwise reinvest. Money that arrives while you watch never nags.
+3. **Invest the spare.** All but one fuse's worth in each wallet that is earning, and all of a wallet that is not, because money in a wallet earns nothing. On day one that means the whole starting wallet, after the fixes.
+4. **When the Bank can't pay for AIR or DEFENSE yet**, move a COMMS fuse in on the FUSE PANEL.
+
+**Why (what player optimisers do):**
+
+| Idea | Where it comes from |
+|---|---|
+| Tell the player exactly what to buy next | A Cookie Clicker optimiser "tells you exactly what to buy next" ([cookie_clicker_optimizer](https://github.com/ianneub/cookie_clicker_optimizer)). AdVenture Capitalist calculators exist "to greedily optimize your purchases" ([AdCap calculator](https://github.com/Slimmmo/Slimmmo.github.io)) |
+| Rank by payback and colour the best | Cookie Monster: "Green: This building has the best PP" (payback period) ([Cookie Monster](https://cookiemonsterteam.github.io/CookieMonster/)). Payback time = cost ÷ income gained ([Idle Center](https://idlecenter.com/guides/idle-game-math/)) |
+| Only light up what you can do now | Revolution Idle players asked for upgrades "grey when i cant afford them and green when i can" ([Steam discussion](https://steamcommunity.com/app/2763740/discussions/0/500576489694053415/?l=japanese)) |
+| One clear action, and reward it | "One clear affordance, one obvious action, nothing else competing" and "Reward the correct action visibly" ([H. Idris](https://h-idris.com/blog/game-onboarding-design)). Small feedback effects make actions feel good ([Juice It or Lose It](https://gdad.wiki/wiki/sources/source-juice-it-or-lose-it)) |
+| Guide, don't play for them | "Guide the player, but never solve the problem for them" ([ModDB](https://www.moddb.com/members/matrixgamingg/blogs/unstabel-maze-hint-system-and-platform-design)). Visibility of system status, and recognition rather than recall ([Nielsen heuristics](https://www.humanstandards.org/interaction-patterns/nielsen-heuristics/)) |
+| Collect everything in one tap | Clash of Clans: a full collector's "production will be stopped until it is collected", and one tap collects them all ([Clash of Clans wiki](https://clashofclans.fandom.com/wiki/Elixir_Collector/Home_Village)) |
+| Respect reduced motion | `prefers-reduced-motion` ([MDN](https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/At-rules/@media/prefers-reduced-motion)) |
+
+What I didn't copy: automatic buying, which would be the automatic maintenance you ruled out (DO IT is still one tap per step), and a cap on stored earnings that forces check-ins, like Egg Inc's silos, where "Each silo adds a base of one stored hour of income" ([Egg Inc wiki](https://egg-inc.fandom.com/wiki/Grain_Silos)). A cap would add friction and a new number, so it is an option for you, not built.
+
+**What the model found.** Real game code, 10 seeds, median days for check-ins every 24 h / 12 h / 6 h. The three starting grids are the dev presets. The first two rows use the Bank only:
+
+| Routine | SECURE | TYPICAL | FRAGILE |
+|---|---|---|---|
+| Invest the whole wallet first, fix later | 29 / 36.5 / 36.5 | 2 / 24.5 / 24.5 | 1 / 1.5 / 1.3 |
+| Fix first | 24 / 32.5 / 36.3 | 21 / 25 / 26.8 | 4 / 7 / 7.3 |
+| Fix first, then move COMMS fuses when the Bank can't pay | 24 / 32.5 / 36.3 | 21 / 27.5 / 29.5 | 14 / 17.5 / 18 |
+| Move COMMS fuses into AIR and DEFENSE first, then buy | 24 / 32.5 / 36.3 | 24 / 32.5 / 36.3 | 24 / 32.5 / 36.3 |
+
+- Investing first only won on the easiest grid. On the typical and fragile grids it lost the bunker within two days, so the advice fixes first.
+- How much to keep back (SECURE): nothing lasted about 6 days (no money when a fuse blew). Two fuses' worth cost up to 12 days (too little earning). One fuse's worth in each earning wallet did best (29 / 37.5 / 37.3). Keeping a fuse's worth in every wallet from day one cost 9 to 14 days, so day one invests everything after the fixes.
+- Moving COMMS fuses first gives every grid the same result, but you lose your countdowns from the start. The advice only moves COMMS when the Bank can't pay. Moving COMMS first is an option for you.
+
+**A player who only presses DO IT** (the real advice code, plus the COMMS move when it is advised):
+
+| Start | Daily | Twice a day | Every 6 h | Taps a visit |
+|---|---|---|---|---|
+| SECURE | 24 days (22–26) | 35 (30.5–36.5) | 36.5 (35.8–37.8) | 2.9 to 5 (max 11) |
+| TYPICAL | 23 (20–24) | 28.5 (24.5–29.5) | 32 (29.8–34.5) | 3.1 to 5.1 (max 11) |
+| FRAGILE | 13 (5–16) | 17 (6–18) | 18.3 (9–20.8) | 2.7 to 4.7 (max 11) |
+
+- That matches or beats the scripted best routine on each grid, in a handful of taps.
+- Compared with the part 2 runway model: the scripted casual player lasted 22 days and the diligent one 37.3. A player who follows DO IT once a day gets about 24 days on SECURE without knowing any strategy. A player who never invests lasts about 10 days, and one who never buys about 6.
+- No balance number changed. Guided daily play sits a little above your 20-day casual target. Bringing it closer to 20 would be a balance change for you to pick.
+
+**Fairness kept:**
+
+- It is advice. Each DO IT runs an ordinary board action, COLLECT still asks REINVEST or PAY OUT, and every other button still works.
+- It adds no clock time and never moves a fuse itself.
+- It only uses what COMMS lets you see. Hidden clocks never change the advice.
+- Nothing is advised while the bunker is frozen or after death.
+- The password gate stays.
+
+**One UI proposal** (in `SA_RENEW`, for you to approve; not a balance number):
+
+| Setting | Proposal | Why |
+|---|---|---|
+| `BEST_MOVE` | true | Shows the BEST MOVE line, DO IT, the highlight and the report line. false hides them all, and the board works as in part 4 |
+
 ## Fixes (no new numbers)
 
 - **F1, door choice saved.** An Idle run stays Idle after a reload. `[5] PROCEED` is no longer offered, so a reload can't be used to take the Single Player door and pause the bunker for free. Single Player runs keep their route back.
@@ -189,13 +268,16 @@ Then open http://localhost:8000/.
 
 ## Tests
 
-- `npm test` runs 8 suites with 166 checks. All pass.
+- `npm test` runs 9 suites with 179 checks. All pass.
   - `tests/renewable_clocks_phase2.cjs` (19): rule A, the return report, the ledger and the time-skip.
   - `tests/playtest_balance_v1.cjs` (19): no instant profit; live, closed-tab and skipped time earn the same; nothing earned while frozen; collect and payout; earnings survive a reload; every currency can buy; 32 in stock; F1; F2 (8-hour hide, short hide, hunt); the sabotage share; the day count; the report's market and COMMS lines.
   - `tests/bank_board_v1.cjs` (32): tap-to-choose and the double-tap guard; the board (every market, the invest toggle, collect, collect all, buy and fit, keep as spare, prices you can't afford); a stale fit button can't fit a second fuse; taps and repeats add no clock time; the return shortcuts and the password gate. Part 4 adds: the live counter matches the next tick exactly and never runs more than 1 s ahead; how many digits it shows; a collect pays exactly what the board shows; the meter and countdown; the READY, pay out first, SOLD OUT and invest to earn one labels; the clock format; the failure line follows COMMS and counts down; nothing moves while frozen; moving numbers never redraw the board; a reload with every system full keeps the tick running.
   - Mutation check: undoing the reload fix, the settle-before-collect or the one-second limit each makes a test fail.
+  - `tests/best_move_v1.cjs` (13): fix first; collect once a visit, paying out while a wallet is short of a fuse; pay out the market whose earnings cover a fuse; the soonest failure you can see comes first and hidden clocks never reorder the advice; COMMS is never suggested; the waiting countdown; sold out; DO IT adds no clock time; nothing is advised while frozen and the `BEST_MOVE` switch hides it; five days of DO IT finish each visit in a few taps and the fuse ledger still adds up; the COMMS move hand-off (the FUSE PANEL shows the keys once, the password gate stays); the return report line.
+  - Mutation check (part 5): investing before fixing, suggesting COMMS, nagging about money that arrives while you watch, keeping nothing back, letting hidden clocks change the advice, skipping the password, lighting every button, never showing the FUSE PANEL note and never clearing it each make a test fail.
 - **Browser check** (Chromium, desktop 1280 px and phone 390 px): the return report, investing, buying, fitting, a +24h skip with earnings, collect and payout, a 25-second hidden tab, the markets list and the death mail. No page errors and no text running off the screen.
 - **Bank board browser check** (desktop with the mouse only, phone with touch taps): report → `[M] BANK` → 50% → INVEST → BUY FUSE → fit AIR → BACK → FUSE PANEL → `[T]` +24h → `[M] BANK` → COLLECT ALL → PAY OUT ALL, then the INVEST buttons on the full market screen. Buttons are at least 44 px tall on the phone, the keyboard stays down on choice screens, nothing runs off the screen, no page errors. Part 4: the `ready` counter rises within 1.6 s of investing, and the fuse countdown and the failure line tick every second, on desktop and phone.
+- **Best move browser check** (desktop with the mouse, phone with touch taps): report → `[M] BANK` → DO IT through the whole first visit (buy and fit until AIR and DEFENSE are full, invest the starting wallet, ALL GOOD) → `+24h` → the COLLECT preview → DO IT (collect all, pay out) → the waiting countdown. A second run with no money and AIR at 2/4: DO IT → FUSE PANEL note → M, 6, 2 moves the fuse (AIR 3/4, COMMS 1/4) and the note goes. Exactly one button lights up; DO IT is 44 px tall and full width on the phone; the latest result stays in view; the pulse stops with reduced motion; no page errors and nothing runs off the screen.
 
 ## Rollback
 

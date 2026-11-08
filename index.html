@@ -16,7 +16,14 @@
      Part 4 (UI only): the board moves in real time: earnings count up, and each market has a meter
      and countdown to its next fuse; a live soonest-failure line. A reload with every system full
      keeps the live tick running (wear-out and earnings no longer pause). UI proposal:
-     LIVE_DECIMALS_MAX. See docs/renewable-clocks-phase2.md. -->
+     LIVE_DECIMALS_MAX.
+     Part 5 (UI only): BEST MOVE. One line on the Bank board says the single best next move and
+     [G] DO IT does it, one step at a time; only that button lights up. The advice follows the
+     routine that lasted longest in the runway model: fix what is broken first, collect once a
+     visit, keep one fuse's worth in each earning wallet and invest the rest. COLLECT shows what
+     REINVEST and PAY OUT each do; the latest result stays in view; when the Bank can't pay, DO IT
+     opens the FUSE PANEL, which shows the COMMS move keys once. UI proposal: BEST_MOVE.
+     See docs/renewable-clocks-phase2.md. -->
 <!-- v8.47: VAULT DOSSIERS + SOVEREIGN CURRENCIES + WELCOME-BACK CLUE (2026-07-19).
      SP_TERMINAL_V5: (1) Each central bank now holds its OWN sovereign fiat (USD/CNY/RUB/GBP/JPY/EUR)
      plus BTC & GEARS; looted foreign fiat lands in a new BANK 'FOREIGN RESERVES' section. (2) Entering
@@ -3684,6 +3691,8 @@ window.saEndArt = function(kind){ try{ var a=(window.SA_ENDART&&window.SA_ENDART
     critical: function(){ tone(1046,"square",0.06,0.10); },
     // Death \u2014 a deep descending tone.
     death: function(){ tone(220,"sine",0.14,1.1,55); tone(110,"sine",0.12,1.4,40,0.15); },
+    // BEST_MOVE_V1: money in or out (collect, invest, buy) \u2014 a short two-note coin blip.
+    coin: function(){ tone(1318.5,"square",0.04,0.05); tone(1760,"square",0.04,0.09,null,0.05); },
     // Matriarch flash \u2014 an ominous swelling low chord.
     matriarch: function(){ tone(98,"sine",0.11,1.4,98); tone(146.8,"triangle",0.08,1.3,146.8,0.05); tone(220,"sine",0.05,1.2,220,0.1); },
     setOn: function(v){ sfxOn=!!v; try{ if(typeof SA_LS!=="undefined") SA_LS.setItem(SFX_KEY, sfxOn?"1":"0"); }catch(e){} },
@@ -30409,6 +30418,10 @@ var SA_TUT_AVATARS = {
   #saTerm .saB-ready{ color:#b9ffd6; text-shadow:0 0 8px rgba(160,255,210,.6); }
   #saTerm .saB-foot{ margin:8px 0 0; }
   #saTerm .saB-msg{ margin:8px 0 0; min-height:1.45em; }
+  /* BEST_MOVE_V1: the latest result stays in view at the bottom of the screen, whatever the
+     scroll, so a tap on DO IT at the top always shows what it did. */
+  #saTerm .saB-msg.saB-res{ position:sticky; bottom:0; z-index:1; background:#020805; padding:4px 0 2px;
+    border-top:1px solid rgba(60,255,150,.22); }
   #saTerm .saB-fit{ margin:6px 0; padding:8px; border:1px solid rgba(143,214,255,.45); border-radius:4px; }
   /* LIVE_MARKETS_V1: earnings counting up, and a meter and countdown to the next fuse. */
   #saTerm .saB-r2{ justify-content:flex-start; gap:2px 16px; margin-top:3px; }
@@ -30423,6 +30436,25 @@ var SA_TUT_AVATARS = {
   #saTerm .saB-eta.ok{ color:#b9ffd6; text-shadow:0 0 8px rgba(160,255,210,.7); }
   #saTerm .saB-failline{ margin:2px 0 0; }
   #saTerm .saB-fit .saB-btn{ display:block; width:100%; text-align:left; margin:6px 0; white-space:normal; }
+  /* BEST_MOVE_V1: one best move and one button. Only the button for that move lights up
+     (players dislike highlights on things they can't do). Motion is off when the device
+     asks for reduced motion. */
+  #saTerm .saB-best{ display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; margin:8px 0 2px; padding:6px 8px;
+    border:1px solid rgba(185,255,214,.55); border-radius:4px; background:rgba(185,255,214,.05); }
+  #saTerm .saB-best.idle{ border-color:rgba(58,154,104,.5); background:transparent; }
+  #saTerm .saB-bk{ white-space:nowrap; }
+  #saTerm .saB-bt{ flex:1 1 240px; color:#b9ffd6; }
+  #saTerm .saB-best.idle .saB-bt{ color:#5fd08f; }
+  #saTerm .saB-btn.best, #saTerm .saB-btn.saB-do{ color:#020805; background:#b9ffd6; border-color:#b9ffd6; text-shadow:none; }
+  #saTerm .saB-btn.best:hover, #saTerm .saB-btn.saB-do:hover{ background:#e2fff0; }
+  #saTerm .saB-btn.saB-do{ animation:saBpulse 1.6s ease-in-out infinite; }
+  @keyframes saBpulse{ 0%,100%{ box-shadow:0 0 0 0 rgba(185,255,214,.6); } 60%{ box-shadow:0 0 0 6px rgba(185,255,214,0); } }
+  #saTerm .saB-askinfo{ margin:4px 0 0; color:#5fd08f; }
+  #saTerm .saB-msg.flash, #saTerm .saB-eta.pop{ animation:saBflash .9s ease-out 1; }
+  @keyframes saBflash{ 0%{ color:#ffffff; text-shadow:0 0 14px rgba(185,255,214,.95); } 100%{} }
+  @media (prefers-reduced-motion: reduce){
+    #saTerm .saB-btn.saB-do, #saTerm .saB-msg.flash, #saTerm .saB-eta.pop{ animation:none; }
+  }
   @media (pointer:coarse){
     #saTerm .saB-btn, #saTerm .saTerm-chip{ min-height:44px; padding:6px 12px; font-size:14px; }
     #saTerm .saTerm-line.saTerm-click{ padding-top:9px; padding-bottom:9px; margin:4px 0; }
@@ -30455,6 +30487,7 @@ var SA_TUT_AVATARS = {
     #saTerm .saB-r2{ gap:2px 12px; margin-top:6px; }
     #saTerm .saB-race{ flex:1 1 100%; }
     #saTerm .saB-meter{ flex:1 1 auto; width:auto; min-width:80px; }
+    #saTerm .saB-best .saB-do{ flex:1 1 100%; }   /* BEST_MOVE_V1: DO IT spans the phone */
   }
 </style>
 
@@ -30722,6 +30755,7 @@ var SA_TUT_AVATARS = {
   var FUSE_ORDER = ["defense","air","power","water","thermal","comms"];
   var FUSE_PROMPT = "FUSE PANEL [M / I / C / B] >";   // RENEWABLE_CLOCKS_FIT_V1
   var panelNote = null;                               // {t, cls}: shown once under the next panel
+  var bestNote = null;                                // BEST_MOVE_V1: {v} after [G] DO IT sends you to the panel for a COMMS move
   // Reset every system to the SMART BUILD entry state (all 4/4). Called on open()/new game.
   function resetFuses(){ for(var k in FUSE){ if(FUSE.hasOwnProperty(k)) FUSE[k].lit=4; } }
   // Time-to-death per fuses-lit, in REAL SECONDS at POWER 100% (x1.0). null = infinite / n/a.
@@ -30865,6 +30899,11 @@ var SA_TUT_AVATARS = {
     if(SA_DEV_HOST) seq.push({t:"  [T] DEV TIME-SKIP (test builds only)", cls:"saTerm-dim", speed:0});
     // One-shot result line (e.g. a fit), printed last so it sits next to the prompt on any screen.
     if(panelNote){ seq.push({t:panelNote.t, cls:panelNote.cls, speed:0}); panelNote=null; }
+    // BEST_MOVE_V1: [G] DO IT sent you here to move a COMMS fuse. Say the keys next to the prompt,
+    // once, and only while the move still makes sense.
+    if(bestNote){ var bn=bestNote; bestNote=null;
+      if(FUSE[bn.v] && FUSE[bn.v].lit<4 && FUSE.comms.lit>0)
+        seq.push({t:"  BEST MOVE  [M] MOVE, then 6 (COMMS), then "+(FUSE_ORDER.indexOf(bn.v)+1)+" ("+FUSE[bn.v].name+"). You lose a sensor, not time.", cls:"saTerm-bright", speed:0}); }
     return runSeq(seq).then(function(){
       panelRendering=false; busy=false; askInput(FUSE_PROMPT, {mode:"fuse", maxlength:2});
     });
@@ -31610,6 +31649,10 @@ var SA_TUT_AVATARS = {
     // earnings counter shows. It shows the cents you can collect, then just enough finer
     // digits for the last one to move about once a second, up to this many in all.
     LIVE_DECIMALS_MAX: 6,
+    // PROPOSAL (UI only, BEST_MOVE_V1): show the BEST MOVE line and its [G] DO IT button on
+    // the Bank board and in the return report. It is advice only: every step is an ordinary
+    // board action, COLLECT still asks REINVEST or PAY OUT, and it adds no clock time.
+    BEST_MOVE: true,
     // Dev time-skip steps, as the user listed them: +10m, +1h, +8h, +24h, +3d.
     DEV_SKIP_STEPS: [
       {label:"+10m", secs:10*60}, {label:"+1h", secs:3600}, {label:"+8h", secs:8*3600},
@@ -33818,7 +33861,7 @@ var SA_TUT_AVATARS = {
      still works: 1-5 open a market's full screen, A collect all, F fit, V vaults, S vault
      seeds, L ledger, B back. Nothing here adds clock time: a fit still spends one held fuse. */
   var BOARD_PROMPT = "BANK [1-5 / A / F / V / S / L / B] >";
-  var board = { open:false, step:0, ask:null, askAll:false, fit:false, fitNote:"", msg:null, timer:null, last:"", pressing:false, el:null, raf:0, liveEls:null };
+  var board = { open:false, step:0, ask:null, askAll:false, fit:false, fitNote:"", msg:null, timer:null, last:"", pressing:false, el:null, raf:0, liveEls:null, visit:null };
   function closeBoardState(){
     if(!board) return;
     board.open=false; board.ask=null; board.askAll=false; board.fit=false; board.el=null; board.last=""; board.liveEls=null;
@@ -33914,7 +33957,7 @@ var SA_TUT_AVATARS = {
   // buttons, so a tap is never lost to a redraw.
   function liveUpdate(){
     if(!board.open || !board.el) return;
-    var els=board.liveEls||[];
+    var els=board.liveEls||[], rang=false;
     for(var i=0;i<els.length;i++){
       var el=els[i], kind=el.getAttribute("data-live");
       if(kind==="fail"){ var ft=failText(); setLiveText(el, ft); el.style.display=ft ? "" : "none"; continue; }
@@ -33922,8 +33965,14 @@ var SA_TUT_AVATARS = {
       if(kind==="odo"){ var pr=readyParts(m); setLiveText(el.children[0], pr.bright); setLiveText(el.children[1], pr.dim); }
       else if(kind==="meter"){ var w=(fuseRace(m).frac*100).toFixed(2)+"%"; if(el._w!==w){ el._w=w; el.style.width=w; } }
       else if(kind==="eta"){
-        var rc=fuseRace(m), cls="saB-eta"+((rc.state==="ready" || rc.state==="payout") ? " ok" : "");
-        setLiveText(el, raceText(rc)); if(el.className!==cls) el.className=cls;
+        var rc=fuseRace(m), ok=(rc.state==="ready" || rc.state==="payout"), cls="saB-eta"+(ok ? " ok" : "");
+        setLiveText(el, raceText(rc));
+        var base=String(el.className||"").replace(/\s*\bpop\b/g, "");
+        if(base!==cls){
+          var became=ok && base.indexOf(" ok")<0;   // BEST_MOVE_V1: a fuse just became affordable
+          el.className=cls+(became ? " pop" : "");
+          if(became && !rang){ rang=true; try{ if(window.saTermSfx && window.saTermSfx.coin) window.saTermSfx.coin(); }catch(e){} }
+        }
       }
     }
   }
@@ -33936,10 +33985,159 @@ var SA_TUT_AVATARS = {
   }
   function startLive(){ if(board.raf || typeof requestAnimationFrame!=="function") return; board.raf=requestAnimationFrame(liveLoop); }
   function stopLive(){ if(board && board.raf){ try{ cancelAnimationFrame(board.raf); }catch(e){} board.raf=0; } }
+  /* ===== BEST_MOVE_V1 (2026-11-08) ================================================
+     One line on the board says the single best thing to do next, and [G] DO IT does exactly
+     that, one step at a time; only the button for that step lights up. Players of idle games
+     build optimisers to be told what to buy next (Cookie Monster's payback colours, the AdCap
+     calculators); this builds one in. The advice follows the routine that lasted longest in
+     the runway model (the real game code, 10 seeds, three starting grids):
+       1. Fix what is broken first. A held spare goes in first; otherwise buy at the market
+          whose wallet holds the most fuses' worth; otherwise collect and pay out the market
+          whose earnings cover a fuse. The soonest failure you can see comes first, then AIR,
+          DEFENSE, POWER, WATER, THERMAL. COMMS is never suggested: it only changes what you
+          see. Investing first and fixing later only won on the easiest grid; on the typical
+          and fragile grids it lost the bunker within two days.
+       2. Collect once a visit: pay out if a wallet that is earning holds less than one fuse's
+          worth, otherwise reinvest. Earnings that arrive while you watch never nag.
+       3. Invest the spare: all but one fuse's worth in each wallet that is earning, and all of
+          a wallet that is not (money in a wallet earns nothing). Keeping nothing back lost the
+          bunker in about 6 days; keeping two fuses' worth cost about 10 days.
+       4. When the Bank can't pay for AIR or DEFENSE yet, suggest moving a COMMS fuse into it on
+          the FUSE PANEL: you lose a sensor, not time. On the fragile grid that took a daily
+          player from 4 days to 14.
+     It is advice: each step is an ordinary board action, COLLECT still asks REINVEST or PAY OUT,
+     it adds no clock time, and it only uses what COMMS lets you see. */
+  var BEST_PRI = ["air","defense","power","water","thermal"];
+  function bestOn(){ return !!SA_RENEW.BEST_MOVE; }
+  function gPrice(m){ return ECON.quote(m.id).price; }
+  function gBal(m){ return ECON.wallet[m.currency]||0; }
+  // Keep one fuse's worth in a wallet that is earning; a wallet that is not earning yet keeps
+  // nothing back. Advice, not a rule: it is what lasted longest in the model.
+  function gKeep(m){ return m.position>0 ? gPrice(m) : 0; }
+  function gSpare(m){ return Math.max(0, Math.floor((gBal(m)-gKeep(m))*100+1e-6)/100); }
+  function anyEarning(){ for(var i=0;i<ECON.markets.length;i++){ if(ECON.markets[i].position>0) return true; } return false; }
+  function anySpare(){ for(var i=0;i<ECON.markets.length;i++){ if(gSpare(ECON.markets[i])>=0.01) return true; } return false; }
+  // The system to fix first: the soonest failure COMMS lets you see, then the fixed order.
+  function fixTarget(){
+    var best=null;
+    for(var i=0;i<BEST_PRI.length;i++){
+      var k=BEST_PRI[i]; if(FUSE[k].lit>=4) continue;
+      var left=(LETHAL.indexOf(k)>=0 && canSee(k)) ? clockLeft(k) : null;
+      var score=(left===null) ? Infinity : left;
+      if(!best || score<best.score) best={k:k, score:score};
+    }
+    return best ? best.k : null;
+  }
+  // The wallet that covers a fuse with the most fuses' worth to spare.
+  function richestCover(){
+    var b=null, bs=0;
+    for(var i=0;i<ECON.markets.length;i++){ var m=ECON.markets[i], p=gPrice(m), x=gBal(m)/p; if(gBal(m)>=p && x>bs){ b=m; bs=x; } }
+    return b;
+  }
+  // The market whose earnings, paid out, cover a fuse.
+  function payoutCover(){
+    var b=null, bs=0;
+    for(var i=0;i<ECON.markets.length;i++){
+      var m=ECON.markets[i], r=ECON.ready(m.id), p=gPrice(m), x=(gBal(m)+r)/p;
+      if(r>0 && gBal(m)+r>=p && x>bs){ b=m; bs=x; }
+    }
+    return b;
+  }
+  // COLLECT's answer: pay out while the wallet is short of a fuse, otherwise reinvest.
+  function bestAnswer(m){ return gBal(m)<gPrice(m) ? "payout" : "reinvest"; }
+  function allAnswer(){
+    for(var i=0;i<ECON.markets.length;i++){ var m=ECON.markets[i]; if(ECON.ready(m.id)>0 && gBal(m)<gPrice(m)) return "payout"; }
+    return "reinvest";
+  }
+  // Markets that had earnings waiting when the board opened and are not collected yet.
+  function visitPending(){
+    var n=0, i, m;
+    for(i=0;i<ECON.markets.length;i++){
+      m=ECON.markets[i];
+      if(ECON.ready(m.id)>0 && (!board.open || (board.visit && board.visit[m.id]))) n++;
+    }
+    return n;
+  }
+  // The market whose earnings will pay for a fuse soonest.
+  function soonestAfford(){
+    var b=null;
+    for(var i=0;i<ECON.markets.length;i++){ var m=ECON.markets[i], rc=fuseRace(m); if(rc.state==="eta" && (!b || rc.secs<b.secs)) b={m:m, secs:rc.secs}; }
+    return b;
+  }
+  // The next step: {act, v, text}. act is a board action, "fuseMove", or null (nothing to do).
+  function bestMove(){
+    if(!bestOn() || deadRun || bunkerFrozen || typeof ECON==="undefined") return null;
+    var inv=ECON.inventory, t=fixTarget(), nm=t ? FUSE[t].name : "", m, a;
+    // Inside a choice the board has already opened.
+    if(board.open && board.fit){
+      if(t && inv.heldByPlayer>0) return {act:"fit", v:t, text:"Fit it into "+nm+": "+fitPreview(t)+"."};
+      return {act:"fitClose", text:(inv.heldByPlayer>0 ? "Keep it as a spare. Nothing that keeps you alive needs it now." : "Close the fit list.")};
+    }
+    if(board.open && board.ask){
+      m=ECON.marketById(board.ask);
+      if(m && ECON.ready(m.id)>0){
+        a=bestAnswer(m);
+        return {act:a, v:m.id, text:(a==="payout" ? ("Pay out. Your "+m.currency+" wallet is short of a fuse ("+fmtMoney(gPrice(m))+" "+m.currency+").")
+                                                   : ("Reinvest. Your "+m.currency+" wallet already holds a fuse's worth, so it all earns."))};
+      }
+    }
+    if(board.open && board.askAll && readyCount()>0){
+      a=allAnswer();
+      return {act:a+"All", text:(a==="payout" ? "Pay out all. A wallet is short of a fuse's worth; the spare goes back in next."
+                                              : "Reinvest all. Every wallet already holds a fuse's worth.")};
+    }
+    // 1. Fix what is broken.
+    if(t){
+      if(inv.heldByPlayer>0) return {act:"fitOpen", text:"Fit your spare fuse into "+nm+"."};
+      if(inv.availableStock>0){
+        m=richestCover();
+        if(m) return {act:"buy", v:m.id, text:"Buy a fuse at "+m.label+" ("+fmtMoney(gPrice(m))+" "+m.currency+") and fit it into "+nm+"."};
+        m=payoutCover();
+        if(m) return {act:"collect", v:m.id, text:"Collect "+m.label+" and pay out. That pays for the fuse "+nm+" needs."};
+      }
+    }
+    if(inv.availableStock>0){
+      // 2. Once a visit: collect everything.
+      if(visitPending()>0){
+        a=allAnswer();
+        return {act:"collectAll", text:(a==="payout" ? "Collect all and pay out, then invest the spare."
+                                                     : "Collect all and reinvest. Every wallet already holds a fuse's worth.")};
+      }
+      // 3. Invest the spare.
+      if(anySpare()) return {act:"investSpare", text:(anyEarning() ? "Invest the spare: all but one fuse's worth in each wallet that is earning."
+                                                                    : "Invest your starting wallet. Money left in a wallet earns nothing.")};
+    }
+    // 4. The Bank can't fix it yet.
+    if(t && (t==="air" || t==="defense") && FUSE.comms.lit>0)
+      return {act:"fuseMove", v:t, text:"No money for a fuse yet. Move a COMMS fuse into "+nm+" on the FUSE PANEL: [M] MOVE, 6, then "+(FUSE_ORDER.indexOf(t)+1)+". You lose a sensor, not time."};
+    if(t){
+      if(inv.availableStock<=0) return {act:null, text:"SOLD OUT. No fuses are left to buy for "+nm+"."};
+      var s=soonestAfford();
+      if(s) return {act:null, m:s.m.id, secs:s.secs, text:nm+" needs a fuse. Your earnings pay for one at "+s.m.label+" in"};
+      return {act:null, text:nm+" needs a fuse. INVEST so your money starts earning towards one."};
+    }
+    return {act:null, text:"ALL GOOD. Nothing needs a fuse, and your money is earning."};
+  }
+  function bestHTML(mv, live){
+    if(!mv) return "";
+    var tx=esc(mv.text);
+    if(mv.m) tx+='&nbsp;<span class="saB-eta" data-live="eta" data-m="'+esc(mv.m)+'">'+(live ? esc(raceText(fuseRace(ECON.marketById(mv.m)))) : '')+'</span>';
+    return '<div class="saB-best'+(mv.act ? "" : " idle")+'"><span class="saB-bk saTerm-amber">BEST MOVE</span><span class="saB-bt">'+tx+'</span>'+
+           (mv.act ? bBtn("best", null, "[G] DO IT", "saB-do") : "")+'</div>';
+  }
+  // For the return report: the same advice, and where to do it.
+  function bestReportLine(){
+    var mv=bestMove(); if(!mv) return null;
+    var where=(mv.act==="fuseMove") ? "[F] FUSE PANEL: " : (mv.act ? "[M] BANK: " : "");
+    var tx=mv.text+(mv.m ? (" "+fmtClock(mv.secs)+".") : "");
+    return {t:"  BEST MOVE  "+where+tx, cls:(mv.act ? "saTerm-bright" : "saTerm-dim"), speed:0};
+  }
   // live=false gives the board without its moving numbers: comparing that tells the 1 s tick
   // whether anything besides the numbers changed (then, and only then, it redraws).
   function boardHTML(live){
     var w=ECON.wallet, inv=ECON.inventory, h=[], i;
+    var mv=bestMove();   // BEST_MOVE_V1
+    function hl(act, v){ return (mv && mv.act===act && (v==null || mv.v===v)) ? " best" : ""; }
     h.push('<div class="saB-tabs">'+bBtn("tab","M","MARKETS","on")+bBtn("tab","V","[V] VAULTS")+bBtn("tab","L","[L] LEDGER")+bBtn("tab","B","[B] BACK")+'</div>');
     h.push('<div class="saB-head"><span class="saTerm-amber">// BANK \u2014 NEW MARKETS //</span><span class="saTerm-dim">DAY '+bunkerDay()+'</span></div>');
     var nb='&nbsp;';   // keep each label with its number when the line wraps
@@ -33948,20 +34146,21 @@ var SA_TUT_AVATARS = {
     h.push('<div class="saB-strip">FUSES'+nb+' for'+nb+'sale'+nb+inv.availableStock+dot+'held'+nb+inv.heldByPlayer+dot+'fitted'+nb+inv.installed+dot+'destroyed'+nb+inv.destroyed+'</div>');
     var ft=live ? failText() : "";
     h.push('<div class="saB-failline saTerm-warn" data-live="fail"'+((live && !ft) ? ' style="display:none"' : '')+'>'+esc(ft)+'</div>');
+    h.push(bestHTML(mv, live));   // BEST_MOVE_V1
     if(board.fit){
       h.push('<div class="saB-fit"><div class="saTerm-bright">'+esc(board.fitNote || ("Fit a fuse. You hold "+inv.heldByPlayer+"."))+'</div>');
       for(i=0;i<FUSE_ORDER.length;i++){
         var k=FUSE_ORDER[i], lit=FUSE[k].lit;
-        h.push(bBtn("fit", k, "["+(i+1)+"] "+FUSE[k].name+"  "+(lit>=4 ? "4/4 \u00b7 full" : (lit+"/4 \u2192 "+(lit+1)+"/4 \u00b7 "+fitPreview(k))), lit>=4 ? "dim" : ""));
+        h.push(bBtn("fit", k, "["+(i+1)+"] "+FUSE[k].name+"  "+(lit>=4 ? "4/4 \u00b7 full" : (lit+"/4 \u2192 "+(lit+1)+"/4 \u00b7 "+fitPreview(k))), (lit>=4 ? "dim" : "")+hl("fit", k)));
       }
-      h.push('<div class="saB-foot">'+bBtn("fitClose", null, inv.heldByPlayer>0 ? "[X] KEEP AS SPARE" : "[X] CLOSE")+'</div></div>');
+      h.push('<div class="saB-foot">'+bBtn("fitClose", null, inv.heldByPlayer>0 ? "[X] KEEP AS SPARE" : "[X] CLOSE", hl("fitClose"))+'</div></div>');
     } else {
       var rc=readyCount(), bar='<div class="saB-bar"><span class="saB-acts">';
       if(board.askAll && rc>0){
         bar += '<span class="saTerm-bright">Collect from '+rc+' market'+(rc===1?"":"s")+':</span>'+
-               bBtn("reinvestAll", null, "[R] REINVEST ALL", "go")+bBtn("payoutAll", null, "[P] PAY OUT ALL", "go")+bBtn("cancelAsk", null, "[B] CANCEL");
+               bBtn("reinvestAll", null, "[R] REINVEST ALL", "go"+hl("reinvestAll"))+bBtn("payoutAll", null, "[P] PAY OUT ALL", "go"+hl("payoutAll"))+bBtn("cancelAsk", null, "[B] CANCEL");
       } else {
-        bar += bBtn("collectAll", null, rc>0 ? ("[A] COLLECT ALL \u00b7 "+rc+" ready") : "[A] COLLECT ALL", rc>0 ? "go" : "dim");
+        bar += bBtn("collectAll", null, rc>0 ? ("[A] COLLECT ALL \u00b7 "+rc+" ready") : "[A] COLLECT ALL", (rc>0 ? "go" : "dim")+hl("collectAll"));
       }
       bar += '</span><span class="saB-acts"><span class="saTerm-dim">INVEST</span>';
       var steps=investSteps();
@@ -33971,15 +34170,18 @@ var SA_TUT_AVATARS = {
         var m=ECON.markets[i], r=ECON.ready(m.id), q=ECON.quote(m.id), bal=w[m.currency]||0, amt=investAmount(m), mid=esc(m.id);
         var row='<div class="saB-row"><div class="saB-r1"><span class="saB-name">['+(i+1)+'] '+esc(m.label)+' \u00b7 '+m.currency+'</span><span class="saB-acts">';
         if(board.ask===m.id && r>0){
-          row += bBtn("reinvest", m.id, "[R] REINVEST "+fmtMoney(r), "go")+bBtn("payout", m.id, "[P] PAY OUT "+fmtMoney(r), "go")+bBtn("cancelAsk", null, "\u00d7");
+          row += bBtn("reinvest", m.id, "[R] REINVEST "+fmtMoney(r), "go"+hl("reinvest", m.id))+bBtn("payout", m.id, "[P] PAY OUT "+fmtMoney(r), "go"+hl("payout", m.id))+bBtn("cancelAsk", null, "\u00d7");
         } else {
-          row += bBtn("collect", m.id, "COLLECT", r>0 ? "go" : "dim");
+          row += bBtn("collect", m.id, "COLLECT", (r>0 ? "go" : "dim")+hl("collect", m.id));
         }
         row += bBtn("invest", m.id, "INVEST "+(investStep()>=1 ? "ALL " : "")+fmtMoney(amt), amt>=0.01 ? "" : "dim");
-        row += bBtn("buy", m.id, "BUY FUSE "+fmtMoney(q.price), (inv.availableStock>0 && bal>=q.price) ? "go" : "dim");
+        row += bBtn("buy", m.id, "BUY FUSE "+fmtMoney(q.price), ((inv.availableStock>0 && bal>=q.price) ? "go" : "dim")+hl("buy", m.id));
+        // BEST_MOVE_V1: what each answer does, before you pick (the 27 July question, made easy).
+        var askInfo=(board.ask===m.id && r>0) ? ('<div class="saB-askinfo">REINVEST: earns '+fmtMoney((m.position+r)*SA_RENEW.EARN_PER_DAY)+' a day (now '+
+          fmtMoney(ECON.perDay(m.id))+') \u00b7 PAY OUT: wallet '+fmtMoney(bal+r)+' '+m.currency+'; a fuse costs '+fmtMoney(q.price)+'</div>') : '';
         // LIVE_MARKETS_V1: what it earns, the earnings counting up, and the run to the next fuse.
         var rc=live ? fuseRace(m) : null, od=live ? readyParts(m) : {bright:"", dim:""};
-        row += '</span></div><div class="saB-r2"><span class="saTerm-dim">'+(m.position>0 ? (fmtMoney(m.position)+' invested \u00b7 +'+fmtMoney(ECON.perDay(m.id))+' a day') : 'nothing invested')+'</span>';
+        row += '</span></div>'+askInfo+'<div class="saB-r2"><span class="saTerm-dim">'+(m.position>0 ? (fmtMoney(m.position)+' invested \u00b7 +'+fmtMoney(ECON.perDay(m.id))+' a day') : 'nothing invested')+'</span>';
         if(m.position>0 || r>0){
           row += '<span class="'+(r>0 ? "saB-ready" : "saTerm-dim")+'">ready'+nb+'<span class="saB-odo" data-live="odo" data-m="'+mid+'"><b>'+od.bright+'</b><i>'+od.dim+'</i></span>'+nb+m.currency+'</span>';
         }
@@ -33989,10 +34191,12 @@ var SA_TUT_AVATARS = {
         h.push(row+'</div></div>');
       }
       var held=inv.heldByPlayer;
-      h.push('<div class="saB-foot">'+bBtn("fitOpen", null, "[F] FIT HELD FUSE ("+held+")", held>0 ? "go" : "dim")+bBtn("seeds", null, "[S] VAULT SEEDS")+'</div>');
+      h.push('<div class="saB-foot">'+bBtn("fitOpen", null, "[F] FIT HELD FUSE ("+held+")", (held>0 ? "go" : "dim")+hl("fitOpen"))+bBtn("seeds", null, "[S] VAULT SEEDS")+'</div>');
     }
-    if(board.msg) h.push('<div class="saB-msg '+(board.msg.cls||"saTerm-bright")+'">'+esc(board.msg.t)+'</div>');
-    else h.push('<div class="saB-msg saTerm-dim">Invest to earn '+Math.round(SA_RENEW.EARN_PER_DAY*100)+'% a day. Collect, then reinvest or pay out. Buy fuses to fit.</div>');
+    // BEST_MOVE_V1: a result flashes once when it appears (never in the static copy).
+    var fl=(live && board.msg && board.msg.at && Date.now()-board.msg.at<900) ? " flash" : "";
+    if(board.msg) h.push('<div class="saB-msg saB-res '+(board.msg.cls||"saTerm-bright")+fl+'">'+esc(board.msg.t)+'</div>');
+    else h.push('<div class="saB-msg saTerm-dim">Invest to earn '+Math.round(SA_RENEW.EARN_PER_DAY*100)+'% a day. Collect, then reinvest or pay out. Buy fuses to fit.'+(mv && mv.act ? ' [G] does the best move.' : '')+'</div>');
     return h.join("");
   }
   function renderBoard(){
@@ -34020,8 +34224,11 @@ var SA_TUT_AVATARS = {
     o.mode="board"; return askInput(BOARD_PROMPT, o);
   }
   function openBoard(msg){
-    clearScreen();
+    clearScreen(); bestNote=null;   // BEST_MOVE_V1: an old hand-off to the fuse panel is void
     board.open=true; board.ask=null; board.askAll=false; board.fit=false; board.msg=msg||null;
+    // BEST_MOVE_V1: what was waiting when you opened the board is what the advice collects.
+    board.visit={};
+    for(var bi=0; bi<ECON.markets.length; bi++){ if(ECON.ready(ECON.markets[bi].id)>0) board.visit[ECON.markets[bi].id]=true; }
     renderBoard();
     try{ screen.scrollTop=0; }catch(e){}
     board.timer=setInterval(boardTick, 1000);
@@ -34032,15 +34239,24 @@ var SA_TUT_AVATARS = {
     if(busy || !board.open || !isBoardMode()) return;
     boardAct(el.getAttribute("data-act"), el.getAttribute("data-v"));
   }
-  function boardSay(t, cls){ board.msg={t:t, cls:cls||"saTerm-bright"}; }
+  function boardSay(t, cls){ board.msg={t:t, cls:cls||"saTerm-bright", at:Date.now()}; }
   function joinSums(sums){ var out=[]; for(var c in sums){ if(sums.hasOwnProperty(c)) out.push(fmtMoney(sums[c])+" "+c); } return out.join(", "); }
   // Every board action, by name. Returns the message shown (used by the tests).
   function boardAct(act, v){
     if(!board.open) return null;
-    var m=v ? ECON.marketById(v) : null, inv=ECON.inventory, sfx=true, i;
+    // BEST_MOVE_V1: [G] DO IT runs the advised step through the ordinary action below.
+    if(act==="best"){
+      var mv=bestMove();
+      if(mv && mv.act==="fuseMove"){ bestNote={v:mv.v}; leaveBoard("P"); return null; }
+      if(mv && mv.act) return boardAct(mv.act, mv.v);
+      boardSay(mv ? mv.text : "No advice right now.", "saTerm-dim");
+      renderBoard(); boardPrompt();
+      return board.msg.t;
+    }
+    var m=v ? ECON.marketById(v) : null, inv=ECON.inventory, sfx=true, coin=false, i;
     board.msg=null;
     // LIVE_MARKETS_V1: settle the time before money moves or a fuse is fitted (like MOVE).
-    if(/^(collect|reinvest|payout|collectAll|reinvestAll|payoutAll|fit)$/.test(act)){ if(!settleClock() || !board.open) return null; }
+    if(/^(collect|reinvest|payout|collectAll|reinvestAll|payoutAll|fit|investSpare)$/.test(act)){ if(!settleClock() || !board.open) return null; }
     if(act==="tab"){ if(v!=="M"){ leaveBoard(v); return null; } }
     else if(act==="step"){ var n=parseInt(v,10); if(n>=0 && n<investSteps().length) board.step=n; }
     else if(act==="collect" && m){
@@ -34051,7 +34267,9 @@ var SA_TUT_AVATARS = {
     else if((act==="reinvest" || act==="payout") && m){
       var got=ECON.collect(m.id, act);
       board.ask=null;
+      if(board.visit) board.visit[m.id]=false;   // BEST_MOVE_V1: collected this visit
       if(got>0){
+        coin=true;
         saveBunkerState();
         boardSay(act==="reinvest" ? ("Reinvested "+fmtMoney(got)+" "+m.currency+". "+m.label+" now earns "+fmtMoney(ECON.perDay(m.id))+" "+m.currency+" a day.")
                                   : ("Paid out "+fmtMoney(got)+" "+m.currency+" to your wallet."));
@@ -34068,13 +34286,15 @@ var SA_TUT_AVATARS = {
         if(a>0){ any++; sums[mm.currency]=(sums[mm.currency]||0)+a; }
       }
       board.askAll=false;
-      if(any){ saveBunkerState(); boardSay((how==="reinvest" ? "Reinvested " : "Paid out ")+joinSums(sums)+(how==="reinvest" ? ". It all earns now." : " to your wallet.")); }
+      board.visit={};   // BEST_MOVE_V1: everything collected this visit
+      if(any){ coin=true; saveBunkerState(); boardSay((how==="reinvest" ? "Reinvested " : "Paid out ")+joinSums(sums)+(how==="reinvest" ? ". It all earns now." : " to your wallet.")); }
       else boardSay("Nothing to collect.", "saTerm-warn");
     }
     else if(act==="invest" && m){
       var amt=investAmount(m);
       if(!(amt>=0.01)) boardSay("No "+m.currency+" in your wallet to invest. PAY OUT some earnings or claim a vault seed.", "saTerm-warn");
       else if(ECON.reinvest(m.id, amt)){
+        coin=true;
         saveBunkerState();
         boardSay("Invested "+fmtMoney(amt)+" "+m.currency+". "+m.label+" now earns "+fmtMoney(ECON.perDay(m.id))+" "+m.currency+" a day. It stays invested.");
       } else boardSay("Not enough "+m.currency+".", "saTerm-warn");
@@ -34084,10 +34304,23 @@ var SA_TUT_AVATARS = {
       if(inv.availableStock<=0) boardSay("No fuses left for sale.", "saTerm-red");
       else if(bal<q.price) boardSay("A fuse here costs "+fmtMoney(q.price)+" "+m.currency+". You have "+fmtMoney(bal)+".", "saTerm-warn");
       else if(ECON.buyFuse(m.id)){
+        coin=true;
         saveBunkerState();   // a purchase is saved straight away
         board.ask=null; board.askAll=false; board.fit=true;
         board.fitNote="Bought 1 fuse for "+fmtMoney(q.price)+" "+m.currency+". Fit it now?";
       } else boardSay("Purchase failed.", "saTerm-warn");
+    }
+    else if(act==="investSpare"){   // BEST_MOVE_V1: all but one fuse's worth in each earning wallet
+      var spent={}, nIn=0, wasEarning=anyEarning();
+      for(i=0;i<ECON.markets.length;i++){
+        var ms=ECON.markets[i], sp=gSpare(ms);
+        if(sp>=0.01 && ECON.reinvest(ms.id, sp)){ nIn++; spent[ms.currency]=(spent[ms.currency]||0)+sp; }
+      }
+      if(nIn){
+        coin=true; saveBunkerState();
+        boardSay(wasEarning ? ("Invested the spare: "+joinSums(spent)+". Each earning wallet keeps one fuse's worth.")
+                            : ("Invested your starting wallet: "+joinSums(spent)+". It all earns now."));
+      } else boardSay("Nothing spare to invest.", "saTerm-dim");
     }
     else if(act==="fitOpen"){
       if(inv.heldByPlayer>0){ board.fit=true; board.ask=null; board.askAll=false; board.fitNote="Fit a fuse. You hold "+inv.heldByPlayer+". Pick the system that lost one."; }
@@ -34104,7 +34337,7 @@ var SA_TUT_AVATARS = {
     }
     else if(act==="open" && m){ leaveBoard(String(ECON.markets.indexOf(m)+1)); return null; }
     else if(act==="seeds"){ leaveBoard("S"); return null; }
-    try{ if(sfx && window.saTermSfx) window.saTermSfx.enter(); }catch(e){}
+    try{ if(sfx && window.saTermSfx){ if(coin && window.saTermSfx.coin) window.saTermSfx.coin(); else window.saTermSfx.enter(); } }catch(e){}
     if(!board.open) return null;
     renderBoard();
     boardPrompt();
@@ -34118,33 +34351,38 @@ var SA_TUT_AVATARS = {
     if(idx>=1 && idx<=ECON.markets.length){ mSel=ECON.markets[idx-1].id; return void marketDetail(); }
     if(dest==="V") return void vaultsList();
     if(dest==="S") return void vaultSeedList();
+    if(dest==="P"){ if(bunkerLocked || !bunkerUnlocked) return void gotoBunkerControls(); return void fusePanel(); }   // BEST_MOVE_V1
     if(dest==="L") return void runSeq(bankLines()).then(function(){ busy=false; askInput("BANK [V / M / B] >", {mode:"bank", maxlength:2}); });
     return void backToMenu();
   }
   function onBoard(val){
     var v=(val||"").trim().toUpperCase();
     hideInput();
+    if(v==="G") return void boardAct("best");   // BEST_MOVE_V1
     if(v==="A") return void boardAct("collectAll");
     if(v==="F") return void boardAct("fitOpen");
     var idx=parseInt(v,10);
     if((idx>=1 && idx<=ECON.markets.length && String(idx)===v) || v==="V" || v==="S" || v==="L" || v==="B") return void leaveBoard(v);
-    if(v!=="") boardSay("Tap a button, or type 1-5, A, F, V, S, L or B.", "saTerm-warn");
+    if(v!=="") boardSay("Tap a button, or type 1-5, A, F, G, V, S, L or B.", "saTerm-warn");
     renderBoard(); boardPrompt();
   }
   function onBoardAll(val){
     var v=(val||"").trim().toUpperCase(); hideInput();
+    if(v==="G") return void boardAct("best");
     if(v==="R") return void boardAct("reinvestAll");
     if(v==="P") return void boardAct("payoutAll");
     boardAct("cancelAsk");
   }
   function onBoardAsk(val){
     var v=(val||"").trim().toUpperCase(); hideInput();
+    if(v==="G") return void boardAct("best");
     if(v==="R") return void boardAct("reinvest", board.ask);
     if(v==="P") return void boardAct("payout", board.ask);
     boardAct("cancelAsk");
   }
   function onBoardFit(val){
     var v=(val||"").trim().toUpperCase(); hideInput();
+    if(v==="G") return void boardAct("best");
     var k=keyByIndex(parseInt(v,10));
     if(k && String(parseInt(v,10))===v) return void boardAct("fit", k);
     boardAct("fitClose");
@@ -34155,12 +34393,13 @@ var SA_TUT_AVATARS = {
      bunker's password gate. */
   var REPORT_PROMPT = "NEXT [M / F / H] >";
   function reportNext(){
+    var bl=bestReportLine();   // BEST_MOVE_V1
     return runSeq([
-      {t:"", instant:true},
+      {t:"", instant:true}].concat(bl ? [bl] : []).concat([
       {t:"  [M] BANK \u2014 collect, invest, buy fuses", cls:"saTerm-menukey", speed:0},
       {t:"  [F] FUSE PANEL \u2014 fit fuses", cls:"saTerm-menukey", speed:0},
       {t:"  [H] HUB MENU", cls:"saTerm-menukey", speed:0}
-    ]).then(function(){ busy=false; askInput(REPORT_PROMPT, {mode:"reportNext", maxlength:2}); });
+    ])).then(function(){ busy=false; askInput(REPORT_PROMPT, {mode:"reportNext", maxlength:2}); });
   }
   function onReportNext(val){
     var v=(val||"").trim().toUpperCase();
@@ -34692,7 +34931,7 @@ var SA_TUT_AVATARS = {
     flashMatriarch(showDeathOverlay);
   }
 
-  function backToMenu(){ return printMenu().then(function(){ busy=false; askInput("SELECT [1-6] >", {mode:"hub", maxlength:2}); }); }
+  function backToMenu(){ bestNote=null; return printMenu().then(function(){ busy=false; askInput("SELECT [1-6] >", {mode:"hub", maxlength:2}); }); }
 
   // Sound helpers: reflect the shared saTermSfx mute on the HUB and let [S] toggle it.
   function soundIsOn(){ try{ return !window.saTermSfx || window.saTermSfx.isOn(); }catch(e){ return true; } }
