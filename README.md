@@ -42,6 +42,11 @@ required; just open `index.html` in a browser to play).
 Open `index.html` in any modern browser.  
 No server or dependencies needed.
 
+On a local copy (`file://` or `localhost`) or the raw.githack.com play-test link, the
+bunker's FUSE PANEL also has a hidden dev time-skip, `[T]`. It never appears on the public
+site. See [`docs/renewable-clocks-phase2.md`](docs/renewable-clocks-phase2.md) for the
+play-test link, the proposals being tested and how to test them.
+
 ## Regression checks
 
 Run `npm test` with Node 20 or later. No dependency installation is needed.
@@ -55,7 +60,7 @@ for scope, save compatibility, required static files, and the browser release ga
 ## Versioning notes
 
 The prior playtester snapshots topped out at v7.7 ("Digital Playtester" title).  
-This build (v8.89, "The Civilisation Rebuild Board") supersedes them and is the authoritative source.
+This build (v8.90-dev, "The Civilisation Rebuild Board") supersedes them and is the authoritative source.
 
 ## Roadmap / Next steps
 

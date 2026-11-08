@@ -202,17 +202,20 @@ test('REINVEST fails cleanly when the market currency balance is insufficient', 
 
 test('PAYOUT credits the market\'s fixed currency, never a different one', () => {
   const h = makeHarness();
+  // MARKET_EARNINGS_V1: earnings build up over time and only the earnings are paid out.
   h.ev(`
     ECON.wallet.USD = 1000; ECON.reinvest("USA", 500);
     ECON.wallet.XRP = 0;
+    ECON.accrue(86400);
   `);
   const before = h.ev('JSON.parse(JSON.stringify(ECON.wallet))');
   const paid = h.ev('ECON.payout("USA")');
   const after  = h.ev('JSON.parse(JSON.stringify(ECON.wallet))');
-  assert(paid > 0, 'payout must return a positive amount when a position exists');
+  assert(paid > 0, 'payout must return a positive amount once earnings have built up');
   eq(after.USD, before.USD + paid, 'USA market must pay in USD');
   eq(after.XRP, before.XRP,        'USA market must NOT touch XRP');
   eq(after.BTC, before.BTC,        'USA market must NOT touch BTC');
+  eq(h.ev('ECON.marketById("USA").position'), 500, 'the invested amount stays in');
 });
 
 test('payout with zero position is a no-op', () => {
@@ -314,7 +317,8 @@ test('installFuse consumes a held fuse and adds it to a chosen slot in the live 
     FUSE.air.lit = 2;   // AIR is down two fuses
     reconcileAll();
     ECON.inventory.heldByPlayer = 1;
-    ECON.inventory.installed = 3;   // arbitrary sane start
+    ECON.inventory.availableStock -= 1;
+    ECON.syncLedger();   // FUSE_LEDGER_V2 (audit F5): installed mirrors the grid
   `);
   const beforeHeld = h.ev('ECON.inventory.heldByPlayer');
   const beforeInstalled = h.ev('ECON.inventory.installed');
@@ -323,6 +327,9 @@ test('installFuse consumes a held fuse and adds it to a chosen slot in the live 
   eq(ok, true, 'installFuse must succeed when a held fuse is available and the slot has room');
   eq(h.ev('ECON.inventory.heldByPlayer'), beforeHeld - 1, 'one fuse leaves heldByPlayer');
   eq(h.ev('ECON.inventory.installed'),    beforeInstalled + 1, 'one fuse enters installed');
+  eq(h.ev('ECON.inventory.installed'),
+     h.ev('FUSE.air.lit+FUSE.water.lit+FUSE.thermal.lit+FUSE.defense.lit+FUSE.power.lit+FUSE.comms.lit'),
+     'installed equals the fuses lit in the grid');
   eq(h.ev('FUSE.air.lit'), beforeAir + 1, 'AIR gains one lit fuse');
 });
 
@@ -392,7 +399,8 @@ test('one full decay -> earn -> buy -> replace loop advances the game state cohe
   const airAfterDecay = h.ev('FUSE.air.lit');
   assert(airAfterDecay <= 3, 'a baseline blow must not increase AIR');
 
-  // 2. Earn: cash out the market position.
+  // 2. Earn: a day passes, then the earnings are paid out (MARKET_EARNINGS_V1).
+  h.ev('ECON.accrue(86400);');
   const paidUsd = h.ev('ECON.payout("USA")');
   assert(paidUsd > 0, `payout must yield USD (got ${paidUsd})`);
 
