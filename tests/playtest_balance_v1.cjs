@@ -322,9 +322,12 @@ test('a tab hidden for 8 hours is billed like a closed tab, with the return repo
   h.fireWin('pagehide');
   eq(JSON.parse(h.storage.SA_BUNKER_STATE_V1).ts, hiddenAt, 'a save while hidden keeps the moment it hid');
   h.ev('document.visibilityState = "visible";'); h.fireDoc('visibilitychange');
-  await pump(h, () => h.ev('mode') === 'hold');
+  // Measure the moment the report appears: printing it takes real time, and the live clock
+  // rightly keeps running while it prints, so a longer report must not move this check.
+  await pump(h, () => h.lines().join('\n').includes('SESSION RESTORED'));
   h.ev('BASELINE_SECS = 0;');
   near(h.ev('rem.air'), closedAir, 'AIR drained exactly as much as with the tab closed (2h 48m of drift)', 1);
+  await pump(h, () => h.ev('mode') === 'reportNext');
   const text = h.lines().join('\n');
   assert(text.includes('SESSION RESTORED'), 'the return report is shown');
   assert(text.includes('You were away 8h 0m'), 'it reports the time hidden');
@@ -393,7 +396,7 @@ test('the return report shows market earnings and what to do next', () => {
   const text = back.ev('offlineReportLines(' + JSON.stringify(res) + ').map(function(l){ return l.t; }).join("\\n")');
   assert(text.includes('DAY 2'), 'the day count is in the header');
   assert(text.includes('Markets earned +44 XRP while you were away.'), 'what the markets made');
-  assert(text.includes('Ready to collect at [2] BANK \u2192 [M] MARKETS: 44 XRP.'), 'where to collect it');
+  assert(text.includes('Ready to collect at [2] BANK: 44 XRP.'), 'where to collect it');
   assert(text.includes('You can buy a fuse now for'), 'which sellers you can pay');
   const fresh = makeHarness();
   liveRun(fresh, { defense: 4, air: 3, power: 4, water: 4, thermal: 4, comms: 4 });

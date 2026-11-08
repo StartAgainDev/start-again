@@ -164,14 +164,16 @@ test('one settings block holds every new number, each balance number labelled a 
     { label: '+10m', secs: 600 }, { label: '+1h', secs: 3600 }, { label: '+8h', secs: 28800 },
     { label: '+24h', secs: 86400 }, { label: '+3d', secs: 259200 },
   ]), 'time-skip steps must be exactly the user\'s list');
-  eq(h.ev('Object.keys(SA_RENEW).join(",")'), 'EARN_PER_DAY,SHOP_STOCK,PRICE_UNITS,STARTER_GRANT,DEV_SKIP_STEPS,DEV_PRESETS',
+  eq(h.ev('Object.keys(SA_RENEW).join(",")'), 'EARN_PER_DAY,SHOP_STOCK,PRICE_UNITS,STARTER_GRANT,INVEST_STEPS,TAP_SETTLE_MS,DEV_SKIP_STEPS,DEV_PRESETS',
     'the settings block holds the play-test proposals and the dev tooling, nothing else');
   eq(h.ev('SA_RENEW.EARN_PER_DAY'), 0.22, 'earnings proposal');
   eq(h.ev('SA_RENEW.SHOP_STOCK'), 32, 'stock proposal');
   eq(h.ev('JSON.stringify(SA_RENEW.PRICE_UNITS)'), JSON.stringify({ USD: 1, XRP: 1, GEARS: 0.2, BTC: 0.1, ETH: 0.01 }), 'price units proposal');
   eq(h.ev('JSON.stringify(SA_RENEW.STARTER_GRANT)'), JSON.stringify({ BTC: 25, XRP: 250, USD: 250, ETH: 2.5, GEARS: 50 }), 'starter grant proposal');
+  eq(h.ev('JSON.stringify(SA_RENEW.INVEST_STEPS)'), JSON.stringify([0.25, 0.5, 1]), 'invest toggle proposal (UI only)');
+  eq(h.ev('SA_RENEW.TAP_SETTLE_MS'), 300, 'double-tap guard proposal (UI only)');
   const block = HTML.slice(HTML.indexOf('RENEWABLE_CLOCKS_SETTINGS_V1 (2026-11-08)'), HTML.indexOf('end RENEWABLE_CLOCKS_SETTINGS_V1'));
-  for (const k of ['EARN_PER_DAY', 'SHOP_STOCK', 'PRICE_UNITS', 'STARTER_GRANT']) {
+  for (const k of ['EARN_PER_DAY', 'SHOP_STOCK', 'PRICE_UNITS', 'STARTER_GRANT', 'INVEST_STEPS', 'TAP_SETTLE_MS']) {
     const before = block.slice(0, block.indexOf(k + ':'));
     assert(/\/\/ PROPOSAL[^\n]*\n(\s*\/\/[^\n]*\n)*\s*$/.test(before), `${k} carries a PROPOSAL label`);
   }
@@ -249,7 +251,7 @@ test('the dev skip shows a before/after block after the real report', async () =
   h.ev('termActive = true; bunkerLive = true; applyDevPreset(SA_RENEW.DEV_PRESETS[1]);');
   h.ev('devTimeSkip(28800, "+8h")');
   for (let i = 0; i < 200; i++) await Promise.resolve();
-  for (let i = 0; i < 4000 && h.ev('mode') !== 'hold'; i++) {   // let the typewriter finish
+  for (let i = 0; i < 4000 && h.ev('mode') !== 'reportNext'; i++) {   // let the typewriter finish
     const items = [...h.tasks.entries()].sort((x, y) => x[1].at - y[1].at);
     const nxt = items.find(([, t]) => !t.interval);
     if (!nxt) break;
@@ -277,7 +279,7 @@ test('the return report lists each fuse lost while away, its cause and when', ()
   assert(text.includes('AIR sabotaged, 1d 0h after you left'), 'sabotage line with timing');
   assert(text.includes('AIR burned out, 1d 0h after you left'), 'decay line with timing');
   assert(text.includes('Spare fuses held: 0.'), 'held spares');
-  assert(text.includes('To replace a blown fuse: buy at [2] BANK'), 'how to replace');
+  assert(text.includes('To replace a blown fuse: buy one at [2] BANK'), 'how to replace');
   assert(text.includes('Soonest failure you can see: AIR in 23h 0m.'), 'soonest visible failure');
 });
 
@@ -384,7 +386,8 @@ test('repeated taps cannot fit the same fuse twice', () => {
   h.ev('onFuseFit("2"); onFuseFit("2"); onFuseFit("2");');
   eq(h.ev('FUSE.air.lit'), 3, 'one held fuse = one fit');
   eq(h.ev('ECON.inventory.heldByPlayer'), 0, 'nothing left to fit');
-  assert(/form\.addEventListener\("submit", function\(e\)\{\s*e\.preventDefault\(\);\s*if\(busy\) return;/.test(HTML),
+  assert(/form\.addEventListener\("submit", onFormSubmit\);/.test(HTML) &&
+         /function onFormSubmit\(e\)\{\s*e\.preventDefault\(\);\s*if\(busy\) return;/.test(HTML),
     'the input form ignores submits while a command is running');
 });
 

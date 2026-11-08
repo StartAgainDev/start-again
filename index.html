@@ -9,7 +9,10 @@
      what is invested, collected as reinvest or payout (F3); 32 fuses for sale; per-currency fuse
      prices (F6); a halved starter grant. Fixes: door choice saved (F1), hidden tab billed like a
      closed tab (F2), real time left (F14), sabotage share on DEFENSE changes, COMMS-limited return
-     report, survival day count. See docs/renewable-clocks-phase2.md. -->
+     report, survival day count.
+     Part 3 (UI only): the Bank opens on one markets board (collect, collect all, an invest toggle,
+     buy and fit straight away); every menu option can be clicked or tapped; one-tap shortcuts after
+     the return report. UI proposals: INVEST_STEPS, TAP_SETTLE_MS. See docs/renewable-clocks-phase2.md. -->
 <!-- v8.47: VAULT DOSSIERS + SOVEREIGN CURRENCIES + WELCOME-BACK CLUE (2026-07-19).
      SP_TERMINAL_V5: (1) Each central bank now holds its OWN sovereign fiat (USD/CNY/RUB/GBP/JPY/EUR)
      plus BTC & GEARS; looted foreign fiat lands in a new BANK 'FOREIGN RESERVES' section. (2) Entering
@@ -30367,6 +30370,48 @@ var SA_TUT_AVATARS = {
   #saTerm .saTerm-disconnect:hover{ background:rgba(60,255,150,.15); color:#b9ffd6; }
   #saTerm.saTerm-shake{ animation:saTermShake .32s ease; }
   @keyframes saTermShake{ 0%,100%{transform:translateX(0)} 20%{transform:translateX(-7px)} 40%{transform:translateX(6px)} 60%{transform:translateX(-4px)} 80%{transform:translateX(3px)} }
+  /* TAP_ANY_LINE_V1 (2026-11-08): menu options can be clicked or tapped as well as typed.
+     Active options get a faint box (touch screens have no hover), brighter on hover. */
+  #saTerm .saTerm-click{ cursor:pointer; border-radius:3px; outline:1px solid rgba(143,214,255,.3); outline-offset:-1px;
+    -webkit-tap-highlight-color:transparent; }
+  #saTerm .saTerm-line.saTerm-click{ padding:1px 6px; margin:2px 0; }
+  #saTerm span.saTerm-click{ display:inline-block; padding:0 6px; margin:1px 0; }
+  #saTerm .saTerm-click:hover{ background:rgba(143,214,255,.13); outline-color:rgba(143,214,255,.85); }
+  #saTerm .saTerm-click:active{ background:rgba(143,214,255,.26); }
+  #saTerm .saTerm-chips{ display:inline-flex; flex-wrap:wrap; gap:6px; flex:0 0 auto; }
+  #saTerm .saTerm-line.saTerm-click{ padding-left:calc(6px + 2ch); text-indent:-2ch; }   /* a wrapped option lines up under its key */
+  #saTerm span.saTerm-click, #saTerm .saB{ text-indent:0; }
+  /* MARKETS_BOARD_V1 (2026-11-08): the Bank's one-screen markets board. */
+  #saTerm .saB{ font-size:15px; line-height:1.45; white-space:normal; padding:0 0 4px; }
+  #saTerm .saB-btn, #saTerm .saTerm-chip{
+    font-family:inherit; font-size:14px; font-weight:700; letter-spacing:.5px; cursor:pointer;
+    background:transparent; color:#8fd6ff; border:1px solid rgba(143,214,255,.6); border-radius:3px;
+    padding:3px 9px; text-shadow:0 0 6px rgba(143,214,255,.45); -webkit-tap-highlight-color:transparent;
+  }
+  #saTerm .saB-btn:hover, #saTerm .saTerm-chip:hover{ background:rgba(143,214,255,.15); }
+  #saTerm .saB-btn:active, #saTerm .saTerm-chip:active{ background:rgba(143,214,255,.3); }
+  #saTerm .saB-btn.go{ color:#b9ffd6; border-color:#b9ffd6; text-shadow:0 0 8px rgba(160,255,210,.6); }
+  #saTerm .saB-btn.on{ color:#020805; background:#8fd6ff; border-color:#8fd6ff; text-shadow:none; }
+  #saTerm .saB-btn.dim{ color:#3a9a68; border-color:rgba(58,154,104,.55); text-shadow:none; }
+  #saTerm .saB-tabs, #saTerm .saB-bar, #saTerm .saB-acts, #saTerm .saB-foot{ display:flex; flex-wrap:wrap; align-items:center; gap:6px; }
+  #saTerm .saB-tabs{ margin:0 0 8px; }
+  #saTerm .saB-head{ display:flex; justify-content:space-between; gap:8px; }
+  #saTerm .saB-strip{ color:#1f9c5c; text-shadow:0 0 4px rgba(40,180,100,.4); }
+  #saTerm .saB-bar{ justify-content:space-between; margin:8px 0 2px; padding:6px 0;
+    border-top:1px solid rgba(60,255,150,.22); border-bottom:1px solid rgba(60,255,150,.22); }
+  #saTerm .saB-row{ padding:7px 0; border-bottom:1px solid rgba(60,255,150,.12); }
+  #saTerm .saB-r1, #saTerm .saB-r2{ display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:4px 10px; }
+  #saTerm .saB-name{ color:#8fd6ff; font-weight:700; text-shadow:0 0 8px rgba(143,214,255,.6); }
+  #saTerm .saB-ready{ color:#b9ffd6; text-shadow:0 0 8px rgba(160,255,210,.6); }
+  #saTerm .saB-foot{ margin:8px 0 0; }
+  #saTerm .saB-msg{ margin:8px 0 0; min-height:1.45em; }
+  #saTerm .saB-fit{ margin:6px 0; padding:8px; border:1px solid rgba(143,214,255,.45); border-radius:4px; }
+  #saTerm .saB-fit .saB-btn{ display:block; width:100%; text-align:left; margin:6px 0; white-space:normal; }
+  @media (pointer:coarse){
+    #saTerm .saB-btn, #saTerm .saTerm-chip{ min-height:44px; padding:6px 12px; font-size:14px; }
+    #saTerm .saTerm-line.saTerm-click{ padding-top:9px; padding-bottom:9px; margin:4px 0; }
+    #saTerm span.saTerm-click{ padding:9px 10px; margin:3px 0; }
+  }
   @media (max-width:640px){
     #saTerm{ padding:14px; }
     #saTerm .saTerm-wrap{ max-height:none; padding-top:72px; box-sizing:border-box; }
@@ -30383,6 +30428,14 @@ var SA_TUT_AVATARS = {
     #saTerm .saTerm-caret{ display:none; }
     #saTerm .saTerm-disconnect{ top:0; min-height:44px; font-size:12px; }
     #saTerm .saTerm-clock{ top:44px; font-size:12px; padding:4px 0; }
+    /* MARKETS_BOARD_V1: on a phone, the tabs fit one row and each market's buttons sit in
+       one even row of three, so the five markets need less scrolling. */
+    #saTerm .saB{ font-size:14px; }
+    #saTerm .saB-tabs{ gap:5px; }
+    #saTerm .saB-tabs .saB-btn{ padding:6px 6px; letter-spacing:0; font-size:13px; }
+    #saTerm .saB-r2{ display:block; }
+    #saTerm .saB-r2 .saB-acts{ display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:6px; margin-top:4px; }
+    #saTerm .saB-r2 .saB-btn{ padding:6px 4px; letter-spacing:0; font-size:13px; white-space:normal; }
   }
 </style>
 
@@ -30854,7 +30907,7 @@ var SA_TUT_AVATARS = {
     if(typeof ECON==="undefined") return {ok:false, msg:"No market link on this build."};
     if(!FUSE[key]) return {ok:false, msg:"Unknown system."};
     if(FUSE[key].lit>=4) return {ok:false, msg:FUSE[key].name+" is already 4/4."};
-    if(ECON.inventory.heldByPlayer<=0) return {ok:false, cls:"saTerm-red", msg:"No spare fuse held. Buy one at [2] BANK \u2192 [M] MARKETS."};
+    if(ECON.inventory.heldByPlayer<=0) return {ok:false, cls:"saTerm-red", msg:"No spare fuse held. Buy one at [2] BANK."};
     var from=FUSE[key].lit, what=fitPreview(key);
     if(!ECON.installFuse(key)) return {ok:false, msg:"Fit failed."};
     try{ if(window.saTermSfx) window.saTermSfx.move(); }catch(e){}
@@ -30864,12 +30917,13 @@ var SA_TUT_AVATARS = {
   function fitSpareStart(){
     var held=(typeof ECON!=="undefined") ? ECON.inventory.heldByPlayer : 0;
     if(held<=0){
-      typeLine("No spare fuse held. Buy one at [2] BANK \u2192 [M] MARKETS, then fit it here.", {cls:"saTerm-warn", speed:0})
+      typeLine("No spare fuse held. Buy one at [2] BANK, then fit it there or here.", {cls:"saTerm-warn", speed:0})
         .then(function(){ busy=false; askInput(FUSE_PROMPT, {mode:"fuse", maxlength:2}); });
       return;
     }
     actionPause=true; actionPauseStart=Date.now();   // the same capped reprieve as MOVE (ACTION_PAUSE_CAP_V1)
-    var seq=[{t:"FIT A SPARE FUSE \u2014 you hold "+held+". Pick the system that lost one.", cls:"saTerm-dim", speed:0}].concat(fitChoiceLines());
+    var seq=[{t:"FIT A SPARE FUSE \u2014 you hold "+held+". Pick the system that lost one.", cls:"saTerm-dim", speed:0}].concat(fitChoiceLines())
+      .concat([{t:"  [X] CANCEL", cls:"saTerm-menukey", speed:0}]);   // TAP_ANY_LINE_V1
     runSeq(seq).then(function(){ busy=false; askInput("FIT INTO [1-6] (X=cancel) >", {mode:"fuseFit", maxlength:2}); });
   }
   function onFuseFit(val){
@@ -31524,6 +31578,15 @@ var SA_TUT_AVATARS = {
     // could actually buy, so the runway stays on target (the model: ~22 days for a casual
     // daily player, ~37 for a diligent one, against ~10 for a player who never invests).
     STARTER_GRANT: {BTC:25, XRP:250, USD:250, ETH:2.5, GEARS:50},
+    // PROPOSAL (UI only, MARKETS_BOARD_V1): the invest toggle on the Bank board, like
+    // AdVenture Capitalist's buy multiplier. One toggle sets how much every INVEST button
+    // moves: this share of the wallet in that market's currency. It changes no balance; it
+    // only saves typing an amount. The first step is the default.
+    INVEST_STEPS: [0.25, 0.5, 1],
+    // PROPOSAL (UI only, TAP_ANY_LINE_V1): taps are ignored for this long after a new prompt
+    // appears, so a double-tap can't press the button that just appeared under the finger
+    // (e.g. COLLECT, then REINVEST in the same spot). Typing is never delayed.
+    TAP_SETTLE_MS: 300,
     // Dev time-skip steps, as the user listed them: +10m, +1h, +8h, +24h, +3d.
     DEV_SKIP_STEPS: [
       {label:"+10m", secs:10*60}, {label:"+1h", secs:3600}, {label:"+8h", secs:8*3600},
@@ -32204,8 +32267,8 @@ var SA_TUT_AVATARS = {
     if(res && res.earned){ for(var c in res.earned){ made.push("+"+fmtMoney(res.earned[c])+" "+c); } }
     ECON.markets.forEach(function(m){ var r=ECON.ready(m.id); if(r>0) waiting.push(fmtMoney(r)+" "+m.currency); });
     if(made.length) out.push({t:"Markets earned "+made.join(", ")+" while you were away.", cls:"saTerm-bright", speed:14});
-    if(waiting.length) out.push({t:"Ready to collect at [2] BANK \u2192 [M] MARKETS: "+waiting.join(", ")+".", cls:"saTerm-menukey", speed:14});
-    else if(!invested) out.push({t:"Nothing is invested, so nothing is earning. Invest at [2] BANK \u2192 [M] MARKETS.", cls:"saTerm-warn", speed:14});
+    if(waiting.length) out.push({t:"Ready to collect at [2] BANK: "+waiting.join(", ")+".", cls:"saTerm-menukey", speed:14});
+    else if(!invested) out.push({t:"Nothing is invested, so nothing is earning. Invest at [2] BANK.", cls:"saTerm-warn", speed:14});
     out.push({t:"Spare fuses held: "+inv.heldByPlayer+".  Fuses for sale: "+inv.availableStock+".", cls:"saTerm-dim", speed:14});
     if(inv.availableStock<=0){
       out.push({t:"The markets have no fuses left to sell.", cls:"saTerm-red", speed:14});
@@ -32217,8 +32280,8 @@ var SA_TUT_AVATARS = {
         cls: can.length ? "saTerm-dim" : "saTerm-warn", speed:14});
     }
     if(missing>0){
-      out.push({t:"To replace a blown fuse: buy at [2] BANK \u2192 [M] MARKETS, then fit it", cls:"saTerm-menukey", speed:14});
-      out.push({t:"with [I] on the FUSE PANEL.", cls:"saTerm-menukey", speed:14});
+      out.push({t:"To replace a blown fuse: buy one at [2] BANK and fit it there,", cls:"saTerm-menukey", speed:14});
+      out.push({t:"or later with [I] on the FUSE PANEL.", cls:"saTerm-menukey", speed:14});
     }
     var soon=soonestVisibleFailure();
     if(soon) out.push({t:"Soonest failure you can see: "+FUSE[soon.key].name+" in "+fmtDur(soon.secs)+".",
@@ -32533,7 +32596,7 @@ var SA_TUT_AVATARS = {
   function scrollEnd(){ screen.scrollTop = screen.scrollHeight; }
   // Wipe the screen buffer so the next view fills a FRESH screen (real-PC feel, no endless scroll).
   // Call at the top of a page-render (fuse panel, controls, mail, etc.) \u2014 NOT mid-page.
-  function clearScreen(){ screen.innerHTML=""; panelLineEls=[]; try{ screen.classList.remove("saTerm-compact"); }catch(e){} } // v8.87: drop compact mode on genuine fresh entry
+  function clearScreen(){ screen.innerHTML=""; panelLineEls=[]; activeChoiceEls=[]; closeBoardState(); try{ screen.classList.remove("saTerm-compact"); }catch(e){} } // v8.87: drop compact mode on genuine fresh entry
 
   // type one line char-by-char; returns a promise
   /* READABILITY_V1 (2026-08-03): `speed` is MILLISECONDS PER CHARACTER \u2014 lower is
@@ -32587,14 +32650,132 @@ var SA_TUT_AVATARS = {
     promptEl.textContent = promptSym||">";
     input.value=""; input.type = opts.password?"text":"text";
     form.style.display="flex";
+    mode = opts.mode||"input";
+    promptAt = Date.now();   // TAP_ANY_LINE_V1: start the double-tap guard
+    input.setAttribute("maxlength", opts.maxlength||40);
     // MOBILE_PROMPT_SCROLL_V1 (2026-10-03): showing the prompt shrinks the screen, which hid
     // the last menu lines (e.g. [5] and [6] on the hub) on phones. Re-scroll once it is shown.
-    scrollEnd(); try{ requestAnimationFrame(scrollEnd); }catch(e){}
-    input.focus();
-    mode = opts.mode||"input";
-    input.setAttribute("maxlength", opts.maxlength||40);
+    // The Bank board keeps its own scroll position (its header sits at the top).
+    if(!opts.keepScroll){ scrollEnd(); try{ requestAnimationFrame(scrollEnd); }catch(e){} }
+    // TAP_ANY_LINE_V1: the options on screen for this prompt become buttons.
+    renderChips(opts.chips);
+    var n = activateChoices(choiceKeys(promptSym, opts));
+    // On touch screens, don't pop the keyboard up over the buttons; typing is one tap away.
+    if(!(coarsePointer() && (n>0 || mode==="hold" || opts.board || (opts.chips && opts.chips.length)))) input.focus();
   }
-  function hideInput(){ form.style.display="none"; }
+  function hideInput(){ form.style.display="none"; deactivateChoices(); renderChips(null); }
+
+  /* TAP_ANY_LINE_V1 (2026-11-08): every menu option can be clicked or tapped as well as
+     typed, as in AdVenture Capitalist and other tap-first games. The prompt lists the valid
+     keys (e.g. "MARKET [C / R / Y / I / B] >"); the newest line on screen for each of those
+     keys becomes a button that types the key and presses Enter. Lines from earlier screens
+     stay plain text. A tap that began while text was still printing only finishes the text;
+     it never picks an option (READABILITY_V1, TERMINAL_PACING_V1). */
+  var activeChoiceEls = [];
+  var readyAtDown = false;
+  var promptAt = 0;
+  function tapSettled(){ return Date.now()-promptAt >= (SA_RENEW.TAP_SETTLE_MS||0); }
+  // A tap counts only if it began with a prompt up, nothing printing, and the prompt settled.
+  function onScreenDown(){
+    readyAtDown = !!(form && form.style.display!=="none" && !busy && tapSettled());
+    board.pressing=true; board.pressAt=Date.now();
+  }
+  var chipsEl = null;
+  var CHOICE_RE = /\[([A-Z0-9]{1,2})\]/g;
+  function coarsePointer(){ try{ return !!(window.matchMedia && window.matchMedia("(pointer: coarse)").matches); }catch(e){ return false; } }
+  function promptKeys(sym){
+    var keys=[], s=String(sym||""), groups=s.match(/\[[^\]]*\]/g)||[];
+    for(var g=0; g<groups.length; g++){
+      var toks=groups[g].slice(1,-1).split("/");
+      for(var t=0; t<toks.length; t++){
+        var tok=toks[t].trim().toUpperCase(), r=tok.match(/^(\d)\s*-\s*(\d)$/);
+        if(r){ for(var n=+r[1]; n<=+r[2]; n++) keys.push(String(n)); }
+        else if(/^[A-Z0-9]{1,2}$/.test(tok)) keys.push(tok);
+      }
+    }
+    var x=s.match(/\(([A-Z0-9])=/i); if(x) keys.push(x[1].toUpperCase());
+    return keys;
+  }
+  function choiceKeys(sym, opts){
+    var keys=promptKeys(sym).concat((opts && opts.keys) || []);
+    if(/^SELECT \[1-6\]/.test(String(sym))) keys.push("S");               // the hub's [S] SOUND
+    if(SA_DEV_HOST && /^FUSE PANEL/.test(String(sym))) keys.push("T");    // the dev time-skip
+    return keys;
+  }
+  function lineText(el){
+    return String(el.innerHTML||"").replace(/<[^>]*>/g,"").replace(/&nbsp;/g," ")
+      .replace(/&lt;/g,"<").replace(/&gt;/g,">").replace(/&quot;/g,"\"").replace(/&amp;/g,"&");
+  }
+  function deactivateChoices(){
+    for(var i=0;i<activeChoiceEls.length;i++){
+      var el=activeChoiceEls[i];
+      try{ el.classList.remove("saTerm-click"); el.removeAttribute("data-k"); el.removeAttribute("role"); }catch(e){}
+    }
+    activeChoiceEls=[];
+  }
+  function markChoice(el, k){ el.classList.add("saTerm-click"); el.setAttribute("data-k", k); el.setAttribute("role", "button"); activeChoiceEls.push(el); }
+  function activateChoices(keys){
+    deactivateChoices();
+    if(!screen || !keys || !keys.length) return 0;
+    var want={}, taken={}, count=0, i;
+    for(i=0;i<keys.length;i++) want[keys[i]]=true;
+    var kids=screen.children || [];
+    for(var j=kids.length-1; j>=0; j--){
+      var el=kids[j];
+      if(!el || (" "+(el.className||"")+" ").indexOf(" saTerm-line ")<0) continue;
+      var txt=lineText(el);
+      if(!/^\s*\[[A-Z0-9]{1,2}\]/.test(txt)) continue;     // only lines that start with an option
+      var toks=[], m; CHOICE_RE.lastIndex=0;
+      while((m=CHOICE_RE.exec(txt))){ toks.push({k:m[1], at:m.index}); }
+      if(toks.length===1){
+        if(want[toks[0].k] && !taken[toks[0].k]){ taken[toks[0].k]=true; count++; markChoice(el, toks[0].k); }
+        continue;
+      }
+      // Several options on one line (e.g. "[M] MOVE  [I] FIT A SPARE ..."): one button each.
+      var live=[], any=false;
+      for(i=0;i<toks.length;i++){ live[i]=!!(want[toks[i].k] && !taken[toks[i].k]); if(live[i]){ taken[toks[i].k]=true; count++; any=true; } }
+      if(!any) continue;
+      var html=esc(txt.slice(0, toks[0].at));
+      for(i=0;i<toks.length;i++){
+        var seg=txt.slice(toks[i].at, i+1<toks.length ? toks[i+1].at : txt.length);
+        var core=seg.replace(/\s+$/,""), tail=seg.slice(core.length);
+        html += live[i] ? ('<span class="saTerm-click" data-k="'+toks[i].k+'" role="button">'+esc(core)+'</span>'+tail) : esc(seg);
+      }
+      el.innerHTML=html;
+      try{ var sp=el.querySelectorAll("span.saTerm-click"); for(var q=0;q<sp.length;q++) activeChoiceEls.push(sp[q]); }catch(e){}
+    }
+    return count;
+  }
+  // Pick an option exactly as if its key had been typed and Enter pressed.
+  function submitKey(k){
+    if(busy || !form || form.style.display==="none") return false;
+    input.value = (k==null) ? "" : String(k);
+    onFormSubmit({preventDefault:function(){}});
+    return true;
+  }
+  function renderChips(list){
+    if(!chipsEl) return;
+    chipsEl.innerHTML="";
+    if(!list || !list.length){ chipsEl.style.display="none"; return; }
+    for(var i=0;i<list.length;i++){
+      var b=document.createElement("button"); b.type="button"; b.className="saTerm-chip";
+      b.textContent=list[i].label; b.setAttribute("data-v", String(list[i].value));
+      chipsEl.appendChild(b);
+    }
+    chipsEl.style.display="inline-flex";
+  }
+  function onScreenClick(ev){
+    // A mouse or finger tap must have started with the prompt already up. A keyboard press
+    // on a focused button (detail 0) counts as ready.
+    var ok=readyAtDown || (!!ev && ev.detail===0 && form.style.display!=="none" && !busy);
+    readyAtDown=false;
+    var t=ev && ev.target, hit=(t && t.closest) ? t.closest(".saTerm-click, [data-act]") : null;
+    if(hit && hit.getAttribute("data-act")){ if(ok) boardClick(hit); return; }
+    if(hit){ if(ok){ try{ ev.preventDefault(); }catch(e){} submitKey(hit.getAttribute("data-k")); } return; }
+    var sel=""; try{ sel=String(window.getSelection ? window.getSelection() : ""); }catch(e){}
+    if(mode==="hold" && ok && !sel){ submitKey(""); return; }               // tap to continue
+    if(form.style.display!=="none" && !coarsePointer()) input.focus();
+  }
 
   // ---- sequences ----------------------------------------------------------
   var BOOT = [
@@ -33391,7 +33572,7 @@ var SA_TUT_AVATARS = {
     var v=(val||"").trim().toUpperCase();
     hideInput(); busy=true;
     if(v==="V"){ typeLine("> NATIONAL VAULTS", {cls:"saTerm-dim", instant:true}).then(vaultsList); }
-    else if(v==="M"){ typeLine("> NEW MARKETS", {cls:"saTerm-dim", instant:true}).then(marketsList); }
+    else if(v==="M"){ typeLine("> NEW MARKETS", {cls:"saTerm-dim", instant:true}).then(function(){ openBoard(); }); }
     else if(v==="B"){ typeLine("> BACK", {cls:"saTerm-dim", instant:true}).then(function(){ return wait(120); }).then(backToMenu); }
     else { typeLine("Enter V, M or B.", {cls:"saTerm-warn", speed:8}).then(function(){ busy=false; askInput("BANK [V / M / B] >", {mode:"bank", maxlength:2}); }); }
   }
@@ -33456,16 +33637,7 @@ var SA_TUT_AVATARS = {
   function onMarkets(val){
     var v = (val||"").trim().toUpperCase();
     hideInput(); busy=true;
-    if(v==="B"){
-      typeLine("> BACK", {cls:"saTerm-dim", instant:true})
-        .then(function(){ return wait(120); })
-        .then(function(){
-          return runSeq(bankLines()).then(function(){
-            busy=false; askInput("BANK [V / M / B] >", {mode:"bank", maxlength:2});
-          });
-        });
-      return;
-    }
+    if(v==="B"){ return void openBoard(); }   // MARKETS_BOARD_V1
     if(v==="V"){ return void vaultSeedList(); }
     var idx = parseInt(v,10);
     if(idx>=1 && idx<=ECON.markets.length){
@@ -33476,8 +33648,13 @@ var SA_TUT_AVATARS = {
       .then(function(){ busy=false; askInput("MARKETS [1-5 / V / B] >", {mode:"markets", maxlength:2}); });
   }
 
+  // MARKETS_BOARD_V1: the full market screen redraws on a clean screen, with the last result
+  // printed under it, instead of stacking a new copy under the old one after every action.
+  var marketNote=null;
+  function marketSay(t, cls){ marketNote={t:t, cls:cls||"saTerm-bright"}; return marketDetail(); }
   function marketDetail(){
-    var m = ECON.marketById(mSel); if(!m){ return marketsList(); }
+    var m = ECON.marketById(mSel); if(!m){ return openBoard(); }
+    clearScreen();
     var q = ECON.quote(m.id);
     var bal = ECON.wallet[m.currency]||0;
     var seq = [
@@ -33495,6 +33672,7 @@ var SA_TUT_AVATARS = {
       {t:"  [I] FIT A HELD FUSE", cls:"saTerm-menukey", speed:0},
       {t:"  [B] BACK", cls:"saTerm-menukey", speed:0}
     ];
+    if(marketNote){ seq.push({t:marketNote.t, cls:marketNote.cls, speed:0}); marketNote=null; }
     return runSeq(seq).then(function(){
       busy=false; askInput(MARKET_PROMPT, {mode:"market", maxlength:2});
     });
@@ -33504,23 +33682,22 @@ var SA_TUT_AVATARS = {
   function onMarket(val){
     var v = (val||"").trim().toUpperCase();
     hideInput(); busy=true;
-    if(v==="B"){ return void marketsList(); }
-    var m = ECON.marketById(mSel); if(!m){ return void marketsList(); }
+    if(v==="B"){ return void openBoard(); }
+    var m = ECON.marketById(mSel); if(!m){ return void openBoard(); }
     if(v==="R"){
       var bal=ECON.wallet[m.currency]||0;
       runSeq([
         {t:"Invest how much "+m.currency+"? You hold "+fmtMoney(bal)+". Type an amount or ALL.", cls:"saTerm-dim", speed:0},
         {t:"Invested money stays in the market. Only its earnings can be paid out.", cls:"saTerm-warn", speed:0}
-      ]).then(function(){ busy=false; askInput("INVEST "+m.currency+" > ", {mode:"marketReinvest", maxlength:12}); });
+      ]).then(function(){ busy=false; askInput("INVEST "+m.currency+" > ", {mode:"marketReinvest", maxlength:12, chips:investChips(m)}); });
       return;
     }
     if(v==="C" || v==="P"){   // [P] kept as a shortcut for an old habit: collect, then choose
       var ready=ECON.ready(m.id);
       if(!(ready>0)){
         var pd=ECON.perDay(m.id);
-        typeLine(pd>0 ? ("Nothing ready yet. This market earns "+fmtMoney(pd)+" "+m.currency+" a day.")
-                      : ("Nothing is invested here yet, so it earns nothing. Use [R] to invest."), {cls:"saTerm-warn", speed:0})
-          .then(function(){ return wait(200); }).then(marketDetail);
+        marketSay(pd>0 ? ("Nothing ready yet. This market earns "+fmtMoney(pd)+" "+m.currency+" a day.")
+                      : ("Nothing is invested here yet, so it earns nothing. Use [R] to invest."), "saTerm-warn");
         return;
       }
       runSeq([
@@ -33536,21 +33713,17 @@ var SA_TUT_AVATARS = {
       var ok = ECON.buyFuse(m.id);
       if(ok) saveBunkerState();   // RENEWABLE_CLOCKS_FIT_V1: a purchase is saved straight away
       if(ok){
-        typeLine("Purchased 1 fuse for "+fmtMoney(q.price)+" "+m.currency+". Held: "+ECON.inventory.heldByPlayer, {cls:"saTerm-bright", speed:0})
-          .then(function(){ return wait(200); }).then(marketDetail);
+        marketSay("Purchased 1 fuse for "+fmtMoney(q.price)+" "+m.currency+". Held: "+ECON.inventory.heldByPlayer, "saTerm-bright");
       } else if(ECON.inventory.availableStock<=0){
-        typeLine("No fuses left in circulation. Stock: 0.", {cls:"saTerm-red", speed:0})
-          .then(function(){ return wait(200); }).then(marketDetail);
+        marketSay("No fuses left in circulation. Stock: 0.", "saTerm-red");
       } else {
-        typeLine("Insufficient "+m.currency+". Need "+fmtMoney(q.price)+".", {cls:"saTerm-warn", speed:0})
-          .then(function(){ return wait(200); }).then(marketDetail);
+        marketSay("Insufficient "+m.currency+". Need "+fmtMoney(q.price)+".", "saTerm-warn");
       }
       return;
     }
     if(v==="I"){
       if(ECON.inventory.heldByPlayer<=0){
-        typeLine("No held fuse. Buy one first.", {cls:"saTerm-warn", speed:0})
-          .then(function(){ return wait(200); }).then(marketDetail);
+        marketSay("No held fuse. Buy one first.", "saTerm-warn");
         return;
       }
       runSeq([{t:"Fit a held fuse into which system? You hold "+ECON.inventory.heldByPlayer+".", cls:"saTerm-dim", speed:0}].concat(fitChoiceLines()))
@@ -33564,15 +33737,14 @@ var SA_TUT_AVATARS = {
   function onMarketCollect(val){
     var v = (val||"").trim().toUpperCase();
     hideInput(); busy=true;
-    var m = ECON.marketById(mSel); if(!m){ return void marketsList(); }
+    var m = ECON.marketById(mSel); if(!m){ return void openBoard(); }
     if(v==="R" || v==="P"){
       var amt = ECON.collect(m.id, v==="R" ? "reinvest" : "payout");
       if(amt>0) saveBunkerState();
       var msg = !(amt>0) ? "Nothing to collect."
         : (v==="R" ? ("Reinvested "+fmtMoney(amt)+" "+m.currency+". It now earns "+fmtMoney(ECON.perDay(m.id))+" "+m.currency+" a day.")
                    : ("Paid out "+fmtMoney(amt)+" "+m.currency+" to your wallet. Wallet: "+fmtMoney(ECON.wallet[m.currency]||0)+" "+m.currency+"."));
-      typeLine(msg, {cls:(amt>0 ? "saTerm-bright" : "saTerm-warn"), speed:0})
-        .then(function(){ return wait(200); }).then(marketDetail);
+      marketSay(msg, (amt>0 ? "saTerm-bright" : "saTerm-warn"));
       return;
     }
     if(v==="B" || v==="X"){ return void marketDetail(); }
@@ -33581,21 +33753,18 @@ var SA_TUT_AVATARS = {
   }
 
   function onMarketReinvest(val){
-    var m = ECON.marketById(mSel); if(!m){ hideInput(); return void marketsList(); }
+    var m = ECON.marketById(mSel); if(!m){ hideInput(); return void openBoard(); }
     hideInput(); busy=true;
     var raw = (val||"").trim().toUpperCase();
     var amt = (raw==="ALL" || raw==="A") ? Math.floor((ECON.wallet[m.currency]||0)*100)/100 : parseFloat(raw.replace(/,/g,""));
     if(!(amt>0) || !isFinite(amt)){
-      typeLine("Invalid amount.", {cls:"saTerm-warn", speed:0})
-        .then(function(){ return wait(150); }).then(marketDetail);
+      marketSay("Invalid amount.", "saTerm-warn");
       return;
     }
     var ok = ECON.reinvest(m.id, amt);
     if(ok) saveBunkerState();
-    typeLine(ok? ("Invested "+fmtMoney(amt)+" "+m.currency+". This market now earns "+fmtMoney(ECON.perDay(m.id))+" "+m.currency+" a day.")
-               : ("Not enough "+m.currency+". You hold "+fmtMoney(ECON.wallet[m.currency]||0)+"."),
-      {cls: ok?"saTerm-bright":"saTerm-warn", speed:0})
-      .then(function(){ return wait(200); }).then(marketDetail);
+    marketSay(ok? ("Invested "+fmtMoney(amt)+" "+m.currency+". This market now earns "+fmtMoney(ECON.perDay(m.id))+" "+m.currency+" a day.")
+               : ("Not enough "+m.currency+". You hold "+fmtMoney(ECON.wallet[m.currency]||0)+"."), ok?"saTerm-bright":"saTerm-warn");
   }
 
   // RENEWABLE_CLOCKS_FIT_V1: the same numbering as the FUSE PANEL (FUSE_ORDER), so [1] is
@@ -33605,15 +33774,268 @@ var SA_TUT_AVATARS = {
     hideInput(); busy=true;
     var key = INSTALL_KEY_MAP[(val||"").trim()];
     if(!key){
-      typeLine("Enter 1-6.", {cls:"saTerm-warn", speed:0})
-        .then(function(){ return wait(150); }).then(marketDetail);
+      marketSay("Enter 1-6.", "saTerm-warn");
       return;
     }
     if(clocksArmed && (termActive || bunkerLive)) clockStep();   // settle time first, like MOVE
     if(deadRun) return;
     var res = fitSpare(key);
-    typeLine(res.msg, {cls: res.ok ? "saTerm-bright" : (res.cls||"saTerm-warn"), speed:0})
-      .then(function(){ return wait(200); }).then(marketDetail);
+    marketSay(res.msg, res.ok ? "saTerm-bright" : (res.cls||"saTerm-warn"));
+  }
+
+  /* ===== MARKETS_BOARD_V1 (2026-11-08) ================================================
+     The Bank opens on one screen, built the way AdVenture Capitalist and AdVenture Communist
+     work: every market in one list, live earnings, one tap per action, and one toggle that
+     sets how much each INVEST button moves (their buy multiplier). COLLECT still asks
+     REINVEST or PAY OUT (the user's 27 July rule), in place, without changing screen.
+     COLLECT ALL asks once for every market (Clash of Clans moved to one-tap collecting in
+     2017). BUY offers to fit the fuse straight away (BioSys: buy, then fit). The keyboard
+     still works: 1-5 open a market's full screen, A collect all, F fit, V vaults, S vault
+     seeds, L ledger, B back. Nothing here adds clock time: a fit still spends one held fuse. */
+  var BOARD_PROMPT = "BANK [1-5 / A / F / V / S / L / B] >";
+  var board = { open:false, step:0, ask:null, askAll:false, fit:false, fitNote:"", msg:null, timer:null, last:"", pressing:false, el:null };
+  function closeBoardState(){
+    if(!board) return;
+    board.open=false; board.ask=null; board.askAll=false; board.fit=false; board.el=null; board.last="";
+    if(board.timer){ clearInterval(board.timer); board.timer=null; }
+  }
+  function isBoardMode(){ return mode==="board" || mode==="boardAll" || mode==="boardAsk" || mode==="boardFit"; }
+  function investSteps(){ return (SA_RENEW.INVEST_STEPS && SA_RENEW.INVEST_STEPS.length) ? SA_RENEW.INVEST_STEPS : [1]; }
+  function investStep(){ var s=investSteps(); return s[Math.max(0, Math.min(s.length-1, board.step|0))]; }
+  function investAmount(m, step){ var bal=ECON.wallet[m.currency]||0; return Math.floor(bal*(step==null ? investStep() : step)*100)/100; }
+  function stepLabel(s){ return s>=1 ? "ALL" : (Math.round(s*100)+"%"); }
+  // Quick amounts for the full market screen's typed INVEST prompt.
+  function investChips(m){
+    var out=[], s=investSteps();
+    for(var i=0;i<s.length;i++){
+      var a=investAmount(m, s[i]);
+      if(a>=0.01) out.push({label:stepLabel(s[i]), value:(s[i]>=1 ? "ALL" : String(a))});
+    }
+    return out;
+  }
+  function bBtn(act, v, label, cls){
+    return '<button type="button" class="saB-btn'+(cls?(" "+cls):"")+'" data-act="'+act+'"'+(v!=null?(' data-v="'+esc(String(v))+'"'):"")+'>'+esc(label)+'</button>';
+  }
+  function readyCount(){ var n=0; for(var i=0;i<ECON.markets.length;i++){ if(ECON.ready(ECON.markets[i].id)>0) n++; } return n; }
+  function boardHTML(){
+    var w=ECON.wallet, inv=ECON.inventory, h=[], i;
+    h.push('<div class="saB-tabs">'+bBtn("tab","M","MARKETS","on")+bBtn("tab","V","[V] VAULTS")+bBtn("tab","L","[L] LEDGER")+bBtn("tab","B","[B] BACK")+'</div>');
+    h.push('<div class="saB-head"><span class="saTerm-amber">// BANK \u2014 NEW MARKETS //</span><span class="saTerm-dim">DAY '+bunkerDay()+'</span></div>');
+    var nb='&nbsp;';   // keep each label with its number when the line wraps
+    var dot=nb+'\u00b7 ';   // a wrap happens after a separator, never before it
+    h.push('<div class="saB-strip">WALLET'+nb+' \u0243'+nb+fmtMoney(w.BTC)+dot+'XRP'+nb+fmtMoney(w.XRP)+dot+'$'+nb+fmtMoney(w.USD)+dot+'ETH'+nb+fmtMoney(w.ETH)+dot+'\u2699'+nb+fmtMoney(w.GEARS)+'</div>');
+    h.push('<div class="saB-strip">FUSES'+nb+' for'+nb+'sale'+nb+inv.availableStock+dot+'held'+nb+inv.heldByPlayer+dot+'fitted'+nb+inv.installed+dot+'destroyed'+nb+inv.destroyed+'</div>');
+    if(board.fit){
+      h.push('<div class="saB-fit"><div class="saTerm-bright">'+esc(board.fitNote || ("Fit a fuse. You hold "+inv.heldByPlayer+"."))+'</div>');
+      for(i=0;i<FUSE_ORDER.length;i++){
+        var k=FUSE_ORDER[i], lit=FUSE[k].lit;
+        h.push(bBtn("fit", k, "["+(i+1)+"] "+FUSE[k].name+"  "+(lit>=4 ? "4/4 \u00b7 full" : (lit+"/4 \u2192 "+(lit+1)+"/4 \u00b7 "+fitPreview(k))), lit>=4 ? "dim" : ""));
+      }
+      h.push('<div class="saB-foot">'+bBtn("fitClose", null, inv.heldByPlayer>0 ? "[X] KEEP AS SPARE" : "[X] CLOSE")+'</div></div>');
+    } else {
+      var rc=readyCount(), bar='<div class="saB-bar"><span class="saB-acts">';
+      if(board.askAll && rc>0){
+        bar += '<span class="saTerm-bright">Collect from '+rc+' market'+(rc===1?"":"s")+':</span>'+
+               bBtn("reinvestAll", null, "[R] REINVEST ALL", "go")+bBtn("payoutAll", null, "[P] PAY OUT ALL", "go")+bBtn("cancelAsk", null, "[B] CANCEL");
+      } else {
+        bar += bBtn("collectAll", null, rc>0 ? ("[A] COLLECT ALL \u00b7 "+rc+" ready") : "[A] COLLECT ALL", rc>0 ? "go" : "dim");
+      }
+      bar += '</span><span class="saB-acts"><span class="saTerm-dim">INVEST</span>';
+      var steps=investSteps();
+      for(i=0;i<steps.length;i++) bar += bBtn("step", i, stepLabel(steps[i]), i===board.step ? "on" : "");
+      h.push(bar+'</span></div>');
+      for(i=0;i<ECON.markets.length;i++){
+        var m=ECON.markets[i], r=ECON.ready(m.id), q=ECON.quote(m.id), bal=w[m.currency]||0, amt=investAmount(m);
+        var row='<div class="saB-row"><div class="saB-r1"><span class="saB-name">['+(i+1)+'] '+esc(m.label)+' \u00b7 '+m.currency+'</span>'+
+                '<span class="saTerm-dim">'+(m.position>0 ? (fmtMoney(m.position)+' invested \u00b7 +'+fmtMoney(ECON.perDay(m.id))+' a day') : 'nothing invested')+'</span></div>'+
+                '<div class="saB-r2"><span class="'+(r>0 ? "saB-ready" : "saTerm-dim")+'">'+((m.position>0 || r>0) ? ('ready '+fmtMoney(r)+' '+m.currency) : '')+'</span><span class="saB-acts">';
+        if(board.ask===m.id && r>0){
+          row += bBtn("reinvest", m.id, "[R] REINVEST "+fmtMoney(r), "go")+bBtn("payout", m.id, "[P] PAY OUT "+fmtMoney(r), "go")+bBtn("cancelAsk", null, "\u00d7");
+        } else {
+          row += bBtn("collect", m.id, "COLLECT", r>0 ? "go" : "dim");
+        }
+        row += bBtn("invest", m.id, "INVEST "+(investStep()>=1 ? "ALL " : "")+fmtMoney(amt), amt>=0.01 ? "" : "dim");
+        row += bBtn("buy", m.id, "BUY FUSE "+fmtMoney(q.price), (inv.availableStock>0 && bal>=q.price) ? "go" : "dim");
+        h.push(row+'</span></div></div>');
+      }
+      var held=inv.heldByPlayer;
+      h.push('<div class="saB-foot">'+bBtn("fitOpen", null, "[F] FIT HELD FUSE ("+held+")", held>0 ? "go" : "dim")+bBtn("seeds", null, "[S] VAULT SEEDS")+'</div>');
+    }
+    if(board.msg) h.push('<div class="saB-msg '+(board.msg.cls||"saTerm-bright")+'">'+esc(board.msg.t)+'</div>');
+    else h.push('<div class="saB-msg saTerm-dim">Invest to earn '+Math.round(SA_RENEW.EARN_PER_DAY*100)+'% a day. Collect, then reinvest or pay out. Buy fuses to fit.</div>');
+    return h.join("");
+  }
+  function renderBoard(){
+    if(!board.open || !screen) return;
+    var html=boardHTML();
+    if(!board.el){ board.el=document.createElement("div"); board.el.className="saB"; screen.appendChild(board.el); }
+    board.last=html; board.el.innerHTML=html;
+  }
+  // Live numbers: redraw only when something on the board changed, never mid-tap.
+  function boardTick(){
+    if(!board.open){ closeBoardState(); return; }
+    if((board.pressing && Date.now()-(board.pressAt||0)<3000) || busy || !board.el) return;
+    var html=boardHTML();
+    if(html!==board.last){ board.last=html; board.el.innerHTML=html; }
+  }
+  function boardPrompt(){
+    busy=false;
+    var o={maxlength:2, board:true, keepScroll:true};
+    if(board.fit){ o.mode="boardFit"; return askInput("FIT INTO [1-6 / X] >", o); }
+    if(board.askAll){ o.mode="boardAll"; return askInput("COLLECT ALL [R / P / B] >", o); }
+    if(board.ask){ o.mode="boardAsk"; return askInput("COLLECT [R / P / B] >", o); }
+    o.mode="board"; return askInput(BOARD_PROMPT, o);
+  }
+  function openBoard(msg){
+    clearScreen();
+    board.open=true; board.ask=null; board.askAll=false; board.fit=false; board.msg=msg||null;
+    renderBoard();
+    try{ screen.scrollTop=0; }catch(e){}
+    board.timer=setInterval(boardTick, 1000);
+    boardPrompt();
+  }
+  function boardClick(el){
+    if(busy || !board.open || !isBoardMode()) return;
+    boardAct(el.getAttribute("data-act"), el.getAttribute("data-v"));
+  }
+  function boardSay(t, cls){ board.msg={t:t, cls:cls||"saTerm-bright"}; }
+  function joinSums(sums){ var out=[]; for(var c in sums){ if(sums.hasOwnProperty(c)) out.push(fmtMoney(sums[c])+" "+c); } return out.join(", "); }
+  // Every board action, by name. Returns the message shown (used by the tests).
+  function boardAct(act, v){
+    if(!board.open) return null;
+    var m=v ? ECON.marketById(v) : null, inv=ECON.inventory, sfx=true, i;
+    board.msg=null;
+    if(act==="tab"){ if(v!=="M"){ leaveBoard(v); return null; } }
+    else if(act==="step"){ var n=parseInt(v,10); if(n>=0 && n<investSteps().length) board.step=n; }
+    else if(act==="collect" && m){
+      if(ECON.ready(m.id)>0){ board.ask=m.id; board.askAll=false; }
+      else boardSay(m.position>0 ? ("Nothing ready yet. "+m.label+" earns "+fmtMoney(ECON.perDay(m.id))+" "+m.currency+" a day.")
+                                 : ("Nothing invested in "+m.label+" yet. Tap INVEST."), "saTerm-warn");
+    }
+    else if((act==="reinvest" || act==="payout") && m){
+      var got=ECON.collect(m.id, act);
+      board.ask=null;
+      if(got>0){
+        saveBunkerState();
+        boardSay(act==="reinvest" ? ("Reinvested "+fmtMoney(got)+" "+m.currency+". "+m.label+" now earns "+fmtMoney(ECON.perDay(m.id))+" "+m.currency+" a day.")
+                                  : ("Paid out "+fmtMoney(got)+" "+m.currency+" to your wallet."));
+      } else boardSay("Nothing to collect.", "saTerm-warn");
+    }
+    else if(act==="cancelAsk"){ board.ask=null; board.askAll=false; }
+    else if(act==="collectAll"){
+      if(readyCount()>0){ board.askAll=true; board.ask=null; } else boardSay("Nothing ready to collect yet.", "saTerm-warn");
+    }
+    else if(act==="reinvestAll" || act==="payoutAll"){
+      var how=(act==="reinvestAll") ? "reinvest" : "payout", sums={}, any=0;
+      for(i=0;i<ECON.markets.length;i++){
+        var mm=ECON.markets[i], a=ECON.collect(mm.id, how);
+        if(a>0){ any++; sums[mm.currency]=(sums[mm.currency]||0)+a; }
+      }
+      board.askAll=false;
+      if(any){ saveBunkerState(); boardSay((how==="reinvest" ? "Reinvested " : "Paid out ")+joinSums(sums)+(how==="reinvest" ? ". It all earns now." : " to your wallet.")); }
+      else boardSay("Nothing to collect.", "saTerm-warn");
+    }
+    else if(act==="invest" && m){
+      var amt=investAmount(m);
+      if(!(amt>=0.01)) boardSay("No "+m.currency+" in your wallet to invest. PAY OUT some earnings or claim a vault seed.", "saTerm-warn");
+      else if(ECON.reinvest(m.id, amt)){
+        saveBunkerState();
+        boardSay("Invested "+fmtMoney(amt)+" "+m.currency+". "+m.label+" now earns "+fmtMoney(ECON.perDay(m.id))+" "+m.currency+" a day. It stays invested.");
+      } else boardSay("Not enough "+m.currency+".", "saTerm-warn");
+    }
+    else if(act==="buy" && m){
+      var q=ECON.quote(m.id), bal=ECON.wallet[m.currency]||0;
+      if(inv.availableStock<=0) boardSay("No fuses left for sale.", "saTerm-red");
+      else if(bal<q.price) boardSay("A fuse here costs "+fmtMoney(q.price)+" "+m.currency+". You have "+fmtMoney(bal)+".", "saTerm-warn");
+      else if(ECON.buyFuse(m.id)){
+        saveBunkerState();   // a purchase is saved straight away
+        board.ask=null; board.askAll=false; board.fit=true;
+        board.fitNote="Bought 1 fuse for "+fmtMoney(q.price)+" "+m.currency+". Fit it now?";
+      } else boardSay("Purchase failed.", "saTerm-warn");
+    }
+    else if(act==="fitOpen"){
+      if(inv.heldByPlayer>0){ board.fit=true; board.ask=null; board.askAll=false; board.fitNote="Fit a fuse. You hold "+inv.heldByPlayer+". Pick the system that lost one."; }
+      else boardSay("No spare fuse held. Buy one with BUY FUSE first.", "saTerm-warn");
+    }
+    else if(act==="fit"){
+      if(!FUSE[v] || !board.fit) return null;
+      if(clocksArmed && (termActive || bunkerLive)) clockStep();   // settle time first, like MOVE
+      if(deadRun || !board.open) return null;
+      var res=fitSpare(v); sfx=false;                                 // fitSpare plays its own sound
+      if(res.ok){ board.fit=false; boardSay(res.msg); } else board.fitNote=res.msg;
+    }
+    else if(act==="fitClose"){
+      board.fit=false;
+      if(inv.heldByPlayer>0) boardSay("Kept as a spare. Fit it from here or with [I] on the FUSE PANEL.", "saTerm-dim");
+    }
+    else if(act==="open" && m){ leaveBoard(String(ECON.markets.indexOf(m)+1)); return null; }
+    else if(act==="seeds"){ leaveBoard("S"); return null; }
+    try{ if(sfx && window.saTermSfx) window.saTermSfx.enter(); }catch(e){}
+    if(!board.open) return null;
+    renderBoard();
+    boardPrompt();
+    return board.msg ? board.msg.t : null;
+  }
+  // Leave the board for another Bank screen, or the hub.
+  function leaveBoard(dest){
+    hideInput(); busy=true;
+    var idx=parseInt(dest,10);
+    clearScreen();
+    if(idx>=1 && idx<=ECON.markets.length){ mSel=ECON.markets[idx-1].id; return void marketDetail(); }
+    if(dest==="V") return void vaultsList();
+    if(dest==="S") return void vaultSeedList();
+    if(dest==="L") return void runSeq(bankLines()).then(function(){ busy=false; askInput("BANK [V / M / B] >", {mode:"bank", maxlength:2}); });
+    return void backToMenu();
+  }
+  function onBoard(val){
+    var v=(val||"").trim().toUpperCase();
+    hideInput();
+    if(v==="A") return void boardAct("collectAll");
+    if(v==="F") return void boardAct("fitOpen");
+    var idx=parseInt(v,10);
+    if((idx>=1 && idx<=ECON.markets.length && String(idx)===v) || v==="V" || v==="S" || v==="L" || v==="B") return void leaveBoard(v);
+    if(v!=="") boardSay("Tap a button, or type 1-5, A, F, V, S, L or B.", "saTerm-warn");
+    renderBoard(); boardPrompt();
+  }
+  function onBoardAll(val){
+    var v=(val||"").trim().toUpperCase(); hideInput();
+    if(v==="R") return void boardAct("reinvestAll");
+    if(v==="P") return void boardAct("payoutAll");
+    boardAct("cancelAsk");
+  }
+  function onBoardAsk(val){
+    var v=(val||"").trim().toUpperCase(); hideInput();
+    if(v==="R") return void boardAct("reinvest", board.ask);
+    if(v==="P") return void boardAct("payout", board.ask);
+    boardAct("cancelAsk");
+  }
+  function onBoardFit(val){
+    var v=(val||"").trim().toUpperCase(); hideInput();
+    var k=keyByIndex(parseInt(v,10));
+    if(k && String(parseInt(v,10))===v) return void boardAct("fit", k);
+    boardAct("fitClose");
+  }
+
+  /* RETURN_QUICK_ACTIONS_V1 (2026-11-08): after the return report, one tap to the Bank or the
+     FUSE PANEL. Enter alone goes to the hub, as before. The FUSE PANEL route keeps the
+     bunker's password gate. */
+  var REPORT_PROMPT = "NEXT [M / F / H] >";
+  function reportNext(){
+    return runSeq([
+      {t:"", instant:true},
+      {t:"  [M] BANK \u2014 collect, invest, buy fuses", cls:"saTerm-menukey", speed:0},
+      {t:"  [F] FUSE PANEL \u2014 fit fuses", cls:"saTerm-menukey", speed:0},
+      {t:"  [H] HUB MENU", cls:"saTerm-menukey", speed:0}
+    ]).then(function(){ busy=false; askInput(REPORT_PROMPT, {mode:"reportNext", maxlength:2}); });
+  }
+  function onReportNext(val){
+    var v=(val||"").trim().toUpperCase();
+    hideInput(); busy=true;
+    if(v==="M") return void openBoard();
+    if(v==="F"){ if(bunkerLocked || !bunkerUnlocked) return void gotoBunkerControls(); return void fusePanel(); }
+    if(v==="H" || v==="") return void backToMenu();
+    typeLine("Enter M, F or H.", {cls:"saTerm-warn", speed:0})
+      .then(function(){ busy=false; askInput(REPORT_PROMPT, {mode:"reportNext", maxlength:2}); });
   }
 
   // Vault seed selection: pick a vault, then enter the password.
@@ -33644,7 +34066,7 @@ var SA_TUT_AVATARS = {
   function onVaultSeed(val){
     var v = (val||"").trim().toUpperCase();
     hideInput(); busy=true;
-    if(v==="B"){ return void marketsList(); }
+    if(v==="B"){ return void openBoard(); }
     var idx = parseInt(v,10);
     if(!(idx>=1 && idx<=ECON.vaults.length)){
       typeLine("Enter 1-"+ECON.vaults.length+" or B.", {cls:"saTerm-warn", speed:0})
@@ -33744,7 +34166,7 @@ var SA_TUT_AVATARS = {
     var v=(val||"").trim().toUpperCase();
     hideInput(); busy=true;
     if(v==="B"){ typeLine("> BACK", {cls:"saTerm-dim", instant:true}).then(function(){ return wait(120); })
-        .then(function(){ return runSeq(bankLines()); }).then(function(){ busy=false; askInput("BANK [V / M / B] >", {mode:"bank", maxlength:2}); }); return; }
+        .then(function(){ openBoard(); }); return; }   // MARKETS_BOARD_V1: back to the Bank board
     var n=parseInt(v,10);
     if(n>=1 && n<=VAULTS.length){ openVault(VAULTS[n-1]); }
     else { typeLine("No such vault.", {cls:"saTerm-warn", speed:8}).then(function(){ busy=false; askInput("OPEN VAULT [1-"+VAULTS.length+" / B] >", {mode:"vaults", maxlength:2}); }); }
@@ -34160,10 +34582,9 @@ var SA_TUT_AVATARS = {
         .then(function(){ return wait(200); })
         .then(backToMenu);
     } else if(v==="2"){
+      // MARKETS_BOARD_V1: the Bank opens on its markets board; the old-world ledger is [L].
       typeLine("> BANK", {cls:"saTerm-dim", instant:true})
-        .then(function(){ return runSeq(bankLines()); })
-        .then(function(){ return wait(150); })
-        .then(function(){ busy=false; askInput("BANK [V / M / B] >", {mode:"bank", maxlength:2}); });
+        .then(function(){ openBoard(); });
     } else if(v==="3"){
       typeLine("> DEPARTMENTS", {cls:"saTerm-dim", instant:true}).then(departmentsList);
     } else if(v==="4"){
@@ -34436,7 +34857,9 @@ var SA_TUT_AVATARS = {
     // READABILITY_V1: this is the single most important screen in the idle loop \u2014 the only
     // place the player is told what happened while they were gone. The hub clears it, so it
     // waits for a keypress, never a timer.
-    p.then(function(){ return hold(); }).then(backToMenu);
+    // RETURN_QUICK_ACTIONS_V1: point straight at what the windfall can do (welcome-back
+    // screens in idle games hand the player to the next purchase). Enter alone = the hub.
+    p.then(reportNext);
   }
 
   // ---- open / close -------------------------------------------------------
@@ -34843,13 +35266,31 @@ var SA_TUT_AVATARS = {
     var plateEl=$("saTermPlate");
     if(plateEl) plateEl.addEventListener("click", function(ev){ ev.preventDefault(); dismissPlate(); }, false);
     if(!term) return;
+    // TAP_ANY_LINE_V1: remember whether a tap began with a prompt already showing.
+    if(screen) screen.addEventListener("pointerdown", onScreenDown, true);
+    // MARKETS_BOARD_V1: no live redraw while a finger or button is down (it would eat the tap).
+    if(screen){ var _unpress=function(){ setTimeout(function(){ board.pressing=false; }, 0); };
+      screen.addEventListener("pointerup", _unpress, true); screen.addEventListener("pointercancel", _unpress, true); }
     // TERMINAL_PACING_V1: tapping the screen while text is printing finishes it (touch has no Enter).
     if(screen) screen.addEventListener("pointerdown", function(){ if(busy && form && form.style.display==="none") skipTyping=true; }, false);
     // Keystroke click + audio unlock (first key resumes the AudioContext under a user gesture).
     input.addEventListener("keydown", function(e){
       try{ if(window.saTermSfx){ window.saTermSfx.unlock(); if(e.key && e.key.length===1) window.saTermSfx.key(); } }catch(err){}
     });
-    form.addEventListener("submit", function(e){
+    form.addEventListener("submit", onFormSubmit);
+    // TAP_ANY_LINE_V1: quick amounts beside the input (e.g. INVEST: 25% / 50% / ALL).
+    chipsEl=document.createElement("span"); chipsEl.className="saTerm-chips"; chipsEl.style.display="none";
+    form.appendChild(chipsEl);
+    chipsEl.addEventListener("click", function(ev){ var b=(ev.target && ev.target.closest) ? ev.target.closest(".saTerm-chip") : null; if(b && tapSettled()) submitKey(b.getAttribute("data-v")); });
+    if(promptEl) promptEl.addEventListener("click", function(){ if(mode==="hold" && tapSettled()) submitKey(""); });
+    // options, board buttons and tap-to-continue; otherwise keep focus in the field
+    // (except on touch screens, where focusing would pop the keyboard over the buttons)
+    screen.addEventListener("click", onScreenClick);
+    disc.addEventListener("click", close);
+    window.saOpenTerminal = open;
+    window.saCloseTerminal = close;
+  }
+  function onFormSubmit(e){
       e.preventDefault();
       if(busy) return;
       try{ if(window.saTermSfx) window.saTermSfx.enter(); }catch(err){} // confirm blip
@@ -34880,6 +35321,11 @@ var SA_TUT_AVATARS = {
       else if(mode==="marketReinvest") onMarketReinvest(v);
       else if(mode==="marketCollect") onMarketCollect(v);
       else if(mode==="marketInstall") onMarketInstall(v);
+      else if(mode==="board") onBoard(v);            // MARKETS_BOARD_V1
+      else if(mode==="boardAll") onBoardAll(v);
+      else if(mode==="boardAsk") onBoardAsk(v);
+      else if(mode==="boardFit") onBoardFit(v);
+      else if(mode==="reportNext") onReportNext(v);  // RETURN_QUICK_ACTIONS_V1
       else if(mode==="vaultSeed") onVaultSeed(v);
       else if(mode==="vaultSeedPw") onVaultSeedPw(v);
       else if(mode==="home") onHome(v);
@@ -34889,12 +35335,6 @@ var SA_TUT_AVATARS = {
       else if(mode==="vaultAuthYN") onVaultAuthYN(v);
       else if(mode==="vaultAuthCode") onVaultAuthCode(v);
       else if(mode==="password") onPassword(v);
-    });
-    // keep focus in the field while the terminal is up
-    screen.addEventListener("click", function(){ if(form.style.display!=="none") input.focus(); });
-    disc.addEventListener("click", close);
-    window.saOpenTerminal = open;
-    window.saCloseTerminal = close;
   }
   if(document.readyState==="loading") document.addEventListener("DOMContentLoaded", boot);
   else boot();

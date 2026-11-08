@@ -2,7 +2,7 @@
 
 Development build only (`v8.90-dev`, branch `feat/renewable-clocks-phase2`, draft PR #8). Nothing here is live. The public site stays on `release/terminal-pacing-2026-10-03` at `18e4ffa` until you say yes.
 
-Part 1 (commit `e0d9942`) added the approved refresh rule A, the return report, the fuse ledger fix and the dev time-skip. Part 2 makes the build fair and fun to play-test: markets earn over time, every currency can buy fuses, and the known loopholes from the Phase 1 audit are closed.
+Part 1 (commit `e0d9942`) added the approved refresh rule A, the return report, the fuse ledger fix and the dev time-skip. Part 2 makes the build fair and fun to play-test: markets earn over time, every currency can buy fuses, and the known loopholes from the Phase 1 audit are closed. Part 3 turns the Bank into one board you can click or tap, and makes every menu option clickable.
 
 ## Play-test link
 
@@ -14,13 +14,13 @@ The play-test link serves this branch straight from GitHub through raw.githack.c
 - Saves are kept in your browser for raw.githack.com, separately from the public site.
 - The dev time-skip `[T]` shows on this link and on local copies. It never shows on start-again.pplx.app.
 
-**A quick test run:**
+**A quick test run** (click or tap everything; typing the keys still works):
 
 1. Click the war-room picture to enter the bunker and play the opening.
-2. Go to `[2] BANK → [M] MARKETS`, pick a market, `[R]` invest part of the wallet and `[Y]` buy a fuse.
-3. Go to `[6] NETWORK → [1] LOCAL → [F]` (FUSE PANEL), `[I]` fit the fuse.
-4. Press `[T]` and skip `+24h`. Read the return report: fuses lost, what the markets earned, what to do next.
-5. Back at the market, `[C]` collect, then `[R]` reinvest or `[P]` pay out.
+2. Open `[2] BANK`. Every market is on one board. Pick 25%, 50% or ALL, then INVEST on a market.
+3. BUY FUSE on a market, then pick the system to fit it into, or KEEP AS SPARE.
+4. Go to `[6] NETWORK → [1] LOCAL → [F]` (FUSE PANEL). Press `[T]` and skip `+24h`.
+5. Read the return report, then `[M] BANK`. COLLECT ALL, then REINVEST ALL or PAY OUT ALL.
 6. Close the tab, or leave it in the background, and come back later. Both are billed the same way.
 
 ## Your approved rule (A)
@@ -51,6 +51,47 @@ Unchanged, and still unapproved placeholders from Local Economy v1: the base pri
 - `[C] COLLECT` asks the question from your 27 July note: `[R] REINVEST` adds the earnings to the investment so it earns more; `[P] PAYOUT` puts them in your wallet to buy fuses.
 - Money you invest stays invested. Only earnings come out.
 - Collecting straight after investing gives nothing, so tapping can't make money.
+
+## Bank board and tapping (part 3)
+
+You said the Bank felt like friction: a long ledger first, four screens deep, typed amounts, and the screen reprinting after every action. Part 3 rebuilds it the way AdVenture Capitalist and AdVenture Communist work. No game number changed.
+
+**What changed:**
+
+- `[2] BANK` opens on one board: your wallet, the fuse stock and all five markets. Each market shows what is invested, what is ready to collect and the fuse price, with COLLECT, INVEST and BUY FUSE buttons. The numbers update while it is open.
+- COLLECT still asks REINVEST or PAY OUT (your 27 July rule), on the same row. COLLECT ALL asks once for every market.
+- One INVEST toggle (25% / 50% / ALL) sets how much every INVEST button moves, so there is nothing to type.
+- BUY FUSE opens the fit picker straight away, with the same before/after preview as the FUSE PANEL, or KEEP AS SPARE.
+- Every menu option on every screen can be clicked or tapped. The keys still work. On the board: `1-5` open a market's full screen, `A` collect all, `F` fit, `V` vaults, `S` vault seeds, `L` the old ledger, `B` back.
+- After the return report: `[M] BANK`, `[F] FUSE PANEL` or `[H] HUB MENU`. Enter alone still goes to the hub. The FUSE PANEL shortcut still asks for the bunker password if the bunker is locked.
+- The full market screen redraws in place instead of stacking copies. Its INVEST prompt has 25% / 50% / ALL buttons beside the box.
+- On a phone: buttons are at least 44 px tall, the keyboard doesn't pop up over the buttons, and the board fits the screen width.
+
+**Why (what other games do):**
+
+| Idea | Where it comes from |
+|---|---|
+| Every business on one screen, tap to collect | AdVenture Capitalist ([Wikipedia](https://en.wikipedia.org/wiki/AdVenture_Capitalist)); AdVenture Communist uses the same loop and layout ([Wanderer review](https://playwanderer.online/game-reviews/adventure-communist)) |
+| One toggle sets how much each buy button buys | AdVenture Capitalist's buy multiplier: x1, x10, x100, Next, Max ([AdCap wiki](https://adventure-capitalist.fandom.com/wiki/Buy_Multiplier)) |
+| Collect everything in one tap | Clash of Clans, since its May 2017 update ([Clash of Clans wiki](https://clashofclans.fandom.com/wiki/Elixir_Collector)) |
+| The welcome-back screen points at what to do next | Idle-game design guidance ([gamedesign.gg](https://gamedesign.gg/articles/idle-and-incremental-game-design/)) |
+| Routine actions take no more than two deliberate inputs | Idle-game UX guidance ([teemo.dev](https://teemo.dev/game-design/coop-idle/systems/ux-ui-and-accessibility-designing/)) |
+| Tap targets at least 44 px | Apple's design tips ([Apple](https://developer.apple.com/design/tips/)); NN/g suggests about 1 cm square ([NN/g](https://www.nngroup.com/articles/touch-target-size/)) |
+
+**Fairness kept:**
+
+- Nothing on the board adds clock time. Opening it, leaving it, tapping and repeating change nothing. Only fitting a fuse helps a clock, and each fit uses one held fuse.
+- A tap that starts while text is printing only finishes the text.
+- A tap in the first 0.3 s after a new prompt is ignored, so a double-tap can't press the button that just appeared under your finger (for example COLLECT, then REINVEST in the same spot). Typing is never delayed.
+
+**Two UI proposals** (in `SA_RENEW`, for you to approve; neither changes a balance number):
+
+| Setting | Proposal | Why |
+|---|---|---|
+| `INVEST_STEPS` | 25% / 50% / ALL of the wallet in that market's currency; starts on 25% | Saves typing an amount, like AdVenture Capitalist's multiplier |
+| `TAP_SETTLE_MS` | 300 ms | Stops accidental double-taps |
+
+Technical detail: the board checks for changes once a second and only redraws when something changed, never while a finger or mouse button is down.
 
 ## Fixes (no new numbers)
 
@@ -109,10 +150,12 @@ Then open http://localhost:8000/.
 
 ## Tests
 
-- `npm test` runs 7 suites with 134 checks. All pass.
+- `npm test` runs 8 suites with 156 checks. All pass.
   - `tests/renewable_clocks_phase2.cjs` (19): rule A, the return report, the ledger and the time-skip.
   - `tests/playtest_balance_v1.cjs` (19): no instant profit; live, closed-tab and skipped time earn the same; nothing earned while frozen; collect and payout; earnings survive a reload; every currency can buy; 32 in stock; F1; F2 (8-hour hide, short hide, hunt); the sabotage share; the day count; the report's market and COMMS lines.
+  - `tests/bank_board_v1.cjs` (22): tap-to-choose and the double-tap guard; the board (every market, the invest toggle, collect, collect all, buy and fit, keep as spare, prices you can't afford); a stale fit button can't fit a second fuse; taps and repeats add no clock time; the return shortcuts and the password gate.
 - **Browser check** (Chromium, desktop 1280 px and phone 390 px): the return report, investing, buying, fitting, a +24h skip with earnings, collect and payout, a 25-second hidden tab, the markets list and the death mail. No page errors and no text running off the screen.
+- **Bank board browser check** (desktop with the mouse only, phone with touch taps): report → `[M] BANK` → 50% → INVEST → BUY FUSE → fit AIR → BACK → FUSE PANEL → `[T]` +24h → `[M] BANK` → COLLECT ALL → PAY OUT ALL, then the INVEST buttons on the full market screen. Buttons are at least 44 px tall on the phone, the keyboard stays down on choice screens, nothing runs off the screen, no page errors.
 
 ## Rollback
 
